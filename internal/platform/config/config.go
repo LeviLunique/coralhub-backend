@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -28,7 +29,12 @@ type HTTPConfig struct {
 }
 
 type DatabaseConfig struct {
-	URL               string
+	Host              string
+	Port              uint16
+	User              string
+	Password          string
+	Name              string
+	SSLMode           string
 	MaxConns          int32
 	MinConns          int32
 	MaxConnLifetime   time.Duration
@@ -72,7 +78,12 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 			IdleTimeout:  durationOrDefault(lookup, "HTTP_IDLE_TIMEOUT", 60*time.Second),
 		},
 		Database: DatabaseConfig{
-			URL:               envOrDefault(lookup, "DATABASE_URL", ""),
+			Host:              envOrDefault(lookup, "DB_HOST", ""),
+			Port:              uint16OrDefault(lookup, "DB_PORT", 5432),
+			User:              envOrDefault(lookup, "DB_USER", ""),
+			Password:          envOrDefault(lookup, "DB_PASSWORD", ""),
+			Name:              envOrDefault(lookup, "DB_NAME", ""),
+			SSLMode:           envOrDefault(lookup, "DB_SSL_MODE", "disable"),
 			MaxConns:          int32OrDefault(lookup, "DB_MAX_CONNS", 10),
 			MinConns:          int32OrDefault(lookup, "DB_MIN_CONNS", 1),
 			MaxConnLifetime:   durationOrDefault(lookup, "DB_MAX_CONN_LIFETIME", 30*time.Minute),
@@ -96,11 +107,38 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 		},
 	}
 
-	if strings.TrimSpace(cfg.Database.URL) == "" {
-		return Config{}, errors.New("DATABASE_URL is required")
+	if strings.TrimSpace(cfg.Database.Host) == "" {
+		return Config{}, errors.New("DB_HOST is required")
+	}
+
+	if strings.TrimSpace(cfg.Database.User) == "" {
+		return Config{}, errors.New("DB_USER is required")
+	}
+
+	if strings.TrimSpace(cfg.Database.Password) == "" {
+		return Config{}, errors.New("DB_PASSWORD is required")
+	}
+
+	if strings.TrimSpace(cfg.Database.Name) == "" {
+		return Config{}, errors.New("DB_NAME is required")
 	}
 
 	return cfg, nil
+}
+
+func (c DatabaseConfig) ConnectionString() string {
+	query := url.Values{}
+	query.Set("sslmode", c.SSLMode)
+
+	connectionURL := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     c.Name,
+		RawQuery: query.Encode(),
+	}
+
+	return connectionURL.String()
 }
 
 func envOrDefault(lookup envLookup, key string, fallback string) string {
@@ -138,6 +176,20 @@ func int32OrDefault(lookup envLookup, key string, fallback int32) int32 {
 	}
 
 	return int32(parsed)
+}
+
+func uint16OrDefault(lookup envLookup, key string, fallback uint16) uint16 {
+	value := envOrDefault(lookup, key, "")
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 16)
+	if err != nil {
+		panic(fmt.Sprintf("invalid uint16 value for %s: %v", key, err))
+	}
+
+	return uint16(parsed)
 }
 
 func boolOrDefault(lookup envLookup, key string, fallback bool) bool {

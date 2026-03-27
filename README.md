@@ -22,6 +22,7 @@ The platform starts with `Coral Jovem Asa Norte` as the initial tenant seed. Tha
 5. Start the worker with `make run-worker`.
 
 The local PostgreSQL container is exposed on host port `5433` to avoid collisions with existing PostgreSQL installations bound to `5432`.
+The app reads explicit DB settings from `.env`: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_SSL_MODE`.
 
 ## Useful Commands
 

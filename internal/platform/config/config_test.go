@@ -8,7 +8,11 @@ import (
 func TestLoadFromEnvUsesDefaults(t *testing.T) {
 	cfg, err := loadFromEnv(func(key string) (string, bool) {
 		values := map[string]string{
-			"DATABASE_URL": "postgres://coralhub:coralhub@localhost:5432/coralhub?sslmode=disable",
+			"DB_HOST":     "localhost",
+			"DB_PORT":     "5433",
+			"DB_USER":     "coralhub",
+			"DB_PASSWORD": "coralhub",
+			"DB_NAME":     "coralhub",
 		}
 		value, ok := values[key]
 		return value, ok
@@ -28,13 +32,17 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 	if cfg.Worker.PollInterval != 5*time.Second {
 		t.Fatalf("Worker.PollInterval = %v, want %v", cfg.Worker.PollInterval, 5*time.Second)
 	}
+
+	if cfg.Database.ConnectionString() != "postgres://coralhub:coralhub@localhost:5433/coralhub?sslmode=disable" {
+		t.Fatalf("Database.ConnectionString() = %q", cfg.Database.ConnectionString())
+	}
 }
 
-func TestLoadFromEnvRequiresDatabaseURL(t *testing.T) {
+func TestLoadFromEnvRequiresSplitDatabaseFields(t *testing.T) {
 	_, err := loadFromEnv(func(key string) (string, bool) {
 		return "", false
 	})
 	if err == nil {
-		t.Fatal("expected error when DATABASE_URL is missing")
+		t.Fatal("expected error when split database config is missing")
 	}
 }

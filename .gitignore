@@ -2,6 +2,7 @@
 .env
 .env.local
 .idea/
+.codex/
 bin/
 coverage.out
 dist/
