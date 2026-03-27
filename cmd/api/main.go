@@ -1,0 +1,67 @@
+package main
+
+import (
+	"context"
+	"errors"
+	stdhttp "net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
+	platformhttp "github.com/LeviLunique/coralhub-backend/internal/platform/http"
+	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
+	"github.com/LeviLunique/coralhub-backend/internal/store/postgres"
+)
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := platformconfig.Load()
+	if err != nil {
+		panic(err)
+	}
+
+	logger, err := platformlog.New(cfg.Observability.LogLevel)
+	if err != nil {
+		panic(err)
+	}
+
+	pool, err := postgres.NewPool(ctx, cfg.Database)
+	if err != nil {
+		logger.Error("failed to connect to postgres", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	server := &stdhttp.Server{
+		Addr:              cfg.HTTP.Addr,
+		Handler:           platformhttp.NewRouter(logger),
+		ReadTimeout:       cfg.HTTP.ReadTimeout,
+		WriteTimeout:      cfg.HTTP.WriteTimeout,
+		IdleTimeout:       cfg.HTTP.IdleTimeout,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
+			logger.Error("api shutdown failed", "error", shutdownErr)
+		}
+	}()
+
+	logger.Info("api starting", "addr", cfg.HTTP.Addr, "env", cfg.AppEnv)
+
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
+		logger.Error("api stopped unexpectedly", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("api stopped")
+}

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS tenant_configs;
+DROP TABLE IF EXISTS tenants;
