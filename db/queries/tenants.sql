@@ -4,6 +4,13 @@ FROM tenants
 WHERE slug = $1
   AND active = TRUE;
 
+-- name: GetTenantBootstrapBySlug :one
+SELECT t.slug, t.display_name, tc.logo_url, tc.primary_color, tc.secondary_color, tc.custom_domain
+FROM tenants AS t
+LEFT JOIN tenant_configs AS tc ON tc.tenant_id = t.id
+WHERE t.slug = $1
+  AND t.active = TRUE;
+
 -- name: GetTenantByCustomDomain :one
 SELECT t.id, t.slug, t.display_name, t.active, t.created_at, t.updated_at
 FROM tenants AS t
