@@ -11,6 +11,7 @@ import (
 
 	s3storage "github.com/LeviLunique/coralhub-backend/internal/integrations/storage/s3"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
@@ -62,10 +63,12 @@ func main() {
 		os.Exit(1)
 	}
 	fileService := modulefiles.NewService(fileRepository, storageClient, voiceKitRepository, membershipRepository, cfg.AppEnv)
+	eventRepository := postgres.NewEventRepository(pool, queries)
+	eventService := events.NewService(eventRepository, membershipRepository)
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService, membershipService, voiceKitService, fileService),
+		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService, membershipService, voiceKitService, fileService, eventService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,

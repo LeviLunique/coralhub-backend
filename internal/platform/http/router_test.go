@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
@@ -19,7 +21,7 @@ import (
 
 func TestNewRouterHealthEndpoints(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, nil, nil, nil, nil, nil, nil, nil)
 
 	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -41,7 +43,7 @@ func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 			DisplayName: "Coral Jovem Asa Norte",
 		},
 	})
-	router := NewRouter(logger, service, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, service, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/tenants/coral-jovem-asa-norte", nil)
 	recorder := httptest.NewRecorder()
@@ -79,7 +81,7 @@ func TestNewRouterChoirCreateEndpointRequiresActorContext(t *testing.T) {
 			Active:   true,
 		},
 	})
-	router := NewRouter(logger, tenantService, choirService, userService, nil, nil, nil)
+	router := NewRouter(logger, tenantService, choirService, userService, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs", strings.NewReader(`{"name":"Sopranos"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -106,7 +108,7 @@ func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 	userService := moduleusers.NewService(&userStubRepository{
 		users: []moduleusers.User{{ID: "user-1", Email: "ana@example.com", FullName: "Ana Clara", Active: true}},
 	})
-	router := NewRouter(logger, tenantService, nil, userService, nil, nil, nil)
+	router := NewRouter(logger, tenantService, nil, userService, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	recorder := httptest.NewRecorder()
@@ -129,7 +131,7 @@ func TestNewRouterMembershipListEndpointRequiresActorHeader(t *testing.T) {
 	})
 	userService := moduleusers.NewService(&userStubRepository{})
 	membershipService := memberships.NewService(&membershipStubRepository{})
-	router := NewRouter(logger, tenantService, nil, userService, membershipService, nil, nil)
+	router := NewRouter(logger, tenantService, nil, userService, membershipService, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/choirs/choir-1/memberships", nil)
 	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
@@ -174,7 +176,7 @@ func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T
 	}, &membershipStubRepository{
 		membership: memberships.Membership{Role: memberships.RoleManager},
 	})
-	router := NewRouter(logger, tenantService, nil, userService, membershipService, voiceKitService, nil)
+	router := NewRouter(logger, tenantService, nil, userService, membershipService, voiceKitService, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/voice-kits", strings.NewReader(`{"name":"Warmups"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -186,6 +188,56 @@ func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T
 
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("voice kit create returned %d, want %d", recorder.Code, http.StatusCreated)
+	}
+}
+
+func TestNewRouterEventCreateEndpointRequiresManagerActorContext(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tenantService := tenants.NewService(&tenantStubRepository{
+		tenant: tenants.Context{
+			ID:          "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			Slug:        "coral-jovem-asa-norte",
+			DisplayName: "Coral Jovem Asa Norte",
+		},
+	})
+	userService := moduleusers.NewService(&userStubRepository{
+		user: moduleusers.User{
+			ID:       "4ab4f4a4-a208-44dc-bf90-7a4e0d65ea7c",
+			TenantID: "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			Email:    "ana@example.com",
+			FullName: "Ana Clara",
+			Active:   true,
+		},
+	})
+	membershipRepository := &membershipStubRepository{
+		membership: memberships.Membership{Role: memberships.RoleManager},
+		memberships: []memberships.Membership{
+			{UserID: "4ab4f4a4-a208-44dc-bf90-7a4e0d65ea7c"},
+		},
+	}
+	eventService := events.NewService(&eventStubRepository{
+		event: events.Event{
+			ID:        "event-1",
+			TenantID:  "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			ChoirID:   "choir-1",
+			Title:     "Main rehearsal",
+			EventType: events.EventTypeRehearsal,
+			StartAt:   time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC),
+			Active:    true,
+		},
+	}, membershipRepository)
+	router := NewRouter(logger, tenantService, nil, userService, nil, nil, nil, eventService)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/events", strings.NewReader(`{"title":"Main rehearsal","event_type":"rehearsal","start_at":"2026-04-20T19:00:00Z"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
+	req.Header.Set("X-User-Email", "ana@example.com")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("event create returned %d, want %d", recorder.Code, http.StatusCreated)
 	}
 }
 
@@ -375,4 +427,56 @@ func (s *fileStubRepository) ListByVoiceKitID(_ context.Context, _, _ string) ([
 
 func (s *fileStubRepository) Delete(_ context.Context, _, _ string) error {
 	return s.err
+}
+
+type eventStubRepository struct {
+	event    events.Event
+	events   []events.Event
+	err      error
+	create   events.CreateParams
+	update   events.UpdateParams
+	canceled string
+}
+
+func (s *eventStubRepository) Create(_ context.Context, params events.CreateParams) (events.Event, error) {
+	s.create = params
+	if s.err != nil {
+		return events.Event{}, s.err
+	}
+
+	return s.event, nil
+}
+
+func (s *eventStubRepository) Update(_ context.Context, params events.UpdateParams) (events.Event, error) {
+	s.update = params
+	if s.err != nil {
+		return events.Event{}, s.err
+	}
+
+	return s.event, nil
+}
+
+func (s *eventStubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (events.Event, error) {
+	if s.err != nil {
+		return events.Event{}, s.err
+	}
+
+	return s.event, nil
+}
+
+func (s *eventStubRepository) ListByChoirID(_ context.Context, _, _ string) ([]events.Event, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.events, nil
+}
+
+func (s *eventStubRepository) Cancel(_ context.Context, _, eventID string) error {
+	if s.err != nil {
+		return s.err
+	}
+
+	s.canceled = eventID
+	return nil
 }
