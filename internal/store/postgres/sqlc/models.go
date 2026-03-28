@@ -29,6 +29,20 @@ type ChoirMember struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Event struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ChoirID     pgtype.UUID        `json:"choir_id"`
+	Title       string             `json:"title"`
+	Description pgtype.Text        `json:"description"`
+	EventType   string             `json:"event_type"`
+	Location    pgtype.Text        `json:"location"`
+	StartAt     pgtype.Timestamptz `json:"start_at"`
+	Active      bool               `json:"active"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type KitFile struct {
 	ID               pgtype.UUID        `json:"id"`
 	TenantID         pgtype.UUID        `json:"tenant_id"`
@@ -41,6 +55,18 @@ type KitFile struct {
 	Active           bool               `json:"active"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ScheduledNotification struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	EventID      pgtype.UUID        `json:"event_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	ReminderType string             `json:"reminder_type"`
+	ScheduledFor pgtype.Timestamptz `json:"scheduled_for"`
+	Status       string             `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Tenant struct {

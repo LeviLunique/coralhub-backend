@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
@@ -300,6 +302,171 @@ func TestFileRepositoryCreateListAndDeleteIntegration(t *testing.T) {
 	}
 }
 
+func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempChoirsTable(t, ctx, tx)
+	createTempUsersTable(t, ctx, tx)
+	createTempChoirMembersTable(t, ctx, tx)
+	createTempEventsTable(t, ctx, tx)
+	createTempScheduledNotificationsTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	userRepository := NewUserRepository(queries)
+	manager, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "manager@example.com",
+		FullName: "Manager",
+	})
+	if err != nil {
+		t.Fatalf("Create manager error = %v", err)
+	}
+
+	member, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "member@example.com",
+		FullName: "Member",
+	})
+	if err != nil {
+		t.Fatalf("Create member error = %v", err)
+	}
+
+	choirRepository := NewChoirRepository(tx, queries)
+	choir, err := choirRepository.Create(ctx, choirs.CreateParams{
+		ActorUserID: manager.ID,
+		TenantID:    tenant.ID,
+		Name:        "Events Choir",
+	})
+	if err != nil {
+		t.Fatalf("Create choir error = %v", err)
+	}
+
+	membershipRepository := NewMembershipRepository(queries)
+	if _, err := membershipRepository.Create(ctx, memberships.CreateParams{
+		TenantID: tenant.ID,
+		ChoirID:  choir.ID,
+		UserID:   member.ID,
+		Role:     memberships.RoleMember,
+	}); err != nil {
+		t.Fatalf("Create member membership error = %v", err)
+	}
+
+	repository := NewEventRepository(tx, queries)
+	startAt := time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC)
+	created, err := repository.Create(ctx, events.CreateParams{
+		TenantID:  tenant.ID,
+		ChoirID:   choir.ID,
+		Title:     "Main Rehearsal",
+		EventType: events.EventTypeRehearsal,
+		StartAt:   startAt,
+		Reminders: []events.ScheduledReminder{
+			{UserID: manager.ID, ReminderType: events.ReminderTypeDayBefore, ScheduledFor: startAt.Add(-24 * time.Hour), Status: events.NotificationStatusPending},
+			{UserID: manager.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: startAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
+			{UserID: member.ID, ReminderType: events.ReminderTypeDayBefore, ScheduledFor: startAt.Add(-24 * time.Hour), Status: events.NotificationStatusPending},
+			{UserID: member.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: startAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := repository.GetByIDForMember(ctx, tenant.ID, created.ID, manager.ID)
+	if err != nil {
+		t.Fatalf("GetByIDForMember() error = %v", err)
+	}
+	if got.ID != created.ID {
+		t.Fatalf("got.ID = %q, want %q", got.ID, created.ID)
+	}
+
+	tenantUUID, err := parseUUID(tenant.ID)
+	if err != nil {
+		t.Fatalf("parseUUID(tenant.ID) error = %v", err)
+	}
+	eventUUID, err := parseUUID(created.ID)
+	if err != nil {
+		t.Fatalf("parseUUID(created.ID) error = %v", err)
+	}
+
+	scheduled, err := queries.ListScheduledNotificationsByEventID(ctx, sqlc.ListScheduledNotificationsByEventIDParams{
+		TenantID: tenantUUID,
+		EventID:  eventUUID,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledNotificationsByEventID() after create error = %v", err)
+	}
+	if len(scheduled) != 4 {
+		t.Fatalf("len(scheduled) after create = %d, want 4", len(scheduled))
+	}
+
+	updatedStartAt := startAt.Add(48 * time.Hour)
+	updated, err := repository.Update(ctx, events.UpdateParams{
+		TenantID:  tenant.ID,
+		EventID:   created.ID,
+		Title:     "Main Rehearsal Updated",
+		EventType: events.EventTypePresentation,
+		StartAt:   updatedStartAt,
+		Reminders: []events.ScheduledReminder{
+			{UserID: manager.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: updatedStartAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
+			{UserID: member.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: updatedStartAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.Title != "Main Rehearsal Updated" {
+		t.Fatalf("updated.Title = %q, want %q", updated.Title, "Main Rehearsal Updated")
+	}
+
+	scheduled, err = queries.ListScheduledNotificationsByEventID(ctx, sqlc.ListScheduledNotificationsByEventIDParams{
+		TenantID: tenantUUID,
+		EventID:  eventUUID,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledNotificationsByEventID() after update error = %v", err)
+	}
+	if len(scheduled) != 6 {
+		t.Fatalf("len(scheduled) after update = %d, want 6", len(scheduled))
+	}
+
+	pendingCount := 0
+	canceledCount := 0
+	for _, item := range scheduled {
+		switch item.Status {
+		case events.NotificationStatusPending:
+			pendingCount++
+		case events.NotificationStatusCanceled:
+			canceledCount++
+		}
+	}
+	if pendingCount != 2 {
+		t.Fatalf("pendingCount after update = %d, want 2", pendingCount)
+	}
+	if canceledCount != 4 {
+		t.Fatalf("canceledCount after update = %d, want 4", canceledCount)
+	}
+
+	if err := repository.Cancel(ctx, tenant.ID, created.ID); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+
+	scheduled, err = queries.ListScheduledNotificationsByEventID(ctx, sqlc.ListScheduledNotificationsByEventIDParams{
+		TenantID: tenantUUID,
+		EventID:  eventUUID,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledNotificationsByEventID() after cancel error = %v", err)
+	}
+	for _, item := range scheduled {
+		if item.Status != events.NotificationStatusCanceled {
+			t.Fatalf("scheduled notification status = %q, want %q", item.Status, events.NotificationStatusCanceled)
+		}
+	}
+
+	_, err = repository.GetByIDForMember(ctx, tenant.ID, created.ID, manager.ID)
+	if !errors.Is(err, events.ErrEventNotFound) {
+		t.Fatalf("GetByIDForMember() after cancel error = %v, want %v", err, events.ErrEventNotFound)
+	}
+}
+
 func openIntegrationTestQueries(t *testing.T) (context.Context, *sqlc.Queries, pgx.Tx) {
 	t.Helper()
 
@@ -442,5 +609,55 @@ func createTempKitFilesTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	`)
 	if err != nil {
 		t.Fatalf("creating temp kit_files table: %v", err)
+	}
+}
+
+func createTempEventsTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE events (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			choir_id UUID NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT,
+			event_type TEXT NOT NULL,
+			location TEXT,
+			start_at TIMESTAMPTZ NOT NULL,
+			active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT events_event_type_check CHECK (event_type IN ('rehearsal', 'presentation', 'other'))
+		) ON COMMIT DROP;
+	`)
+	if err != nil {
+		t.Fatalf("creating temp events table: %v", err)
+	}
+}
+
+func createTempScheduledNotificationsTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE scheduled_notifications (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			event_id UUID NOT NULL,
+			user_id UUID NOT NULL,
+			reminder_type TEXT NOT NULL,
+			scheduled_for TIMESTAMPTZ NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT scheduled_notifications_reminder_type_check CHECK (reminder_type IN ('day_before', 'hour_before')),
+			CONSTRAINT scheduled_notifications_status_check CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'canceled'))
+		) ON COMMIT DROP;
+		CREATE UNIQUE INDEX scheduled_notifications_pending_identity_idx
+			ON scheduled_notifications (tenant_id, user_id, event_id, reminder_type)
+			WHERE status IN ('pending', 'processing');
+	`)
+	if err != nil {
+		t.Fatalf("creating temp scheduled_notifications table: %v", err)
 	}
 }

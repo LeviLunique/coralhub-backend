@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -25,6 +26,13 @@ func textValue(value *string) pgtype.Text {
 	return pgtype.Text{
 		String: *value,
 		Valid:  true,
+	}
+}
+
+func timestamptzValue(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{
+		Time:  value.UTC(),
+		Valid: true,
 	}
 }
 
