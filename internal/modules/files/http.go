@@ -1,11 +1,12 @@
 package files
 
 import (
-	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 
 	"github.com/LeviLunique/coralhub-backend/internal/platform/requestctx"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -16,25 +17,35 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
 			r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes)
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid multipart form")
+				var maxBytesErr *http.MaxBytesError
+				if errors.As(err, &maxBytesErr) {
+					platformweb.WriteError(w, r, http.StatusBadRequest, "request_body_too_large", "request body exceeds the maximum allowed size")
+					return
+				}
+				var netErr net.Error
+				if errors.As(err, &netErr) {
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_multipart_form", "invalid multipart form")
+					return
+				}
+				platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_multipart_form", "invalid multipart form")
 				return
 			}
 
 			uploadedFile, header, err := r.FormFile("file")
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "file form field is required")
+				platformweb.WriteError(w, r, http.StatusBadRequest, "file_field_required", "file form field is required")
 				return
 			}
 			defer uploadedFile.Close()
@@ -48,42 +59,42 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidVoiceKitID):
-					writeError(w, http.StatusBadRequest, "voice kit id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_voice_kit_id", "voice kit id is required")
 				case errors.Is(err, ErrInvalidOriginalFilename):
-					writeError(w, http.StatusBadRequest, "uploaded filename is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_uploaded_filename", "uploaded filename is required")
 				case errors.Is(err, ErrInvalidContentType):
-					writeError(w, http.StatusBadRequest, "valid content type is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_content_type", "valid content type is required")
 				case errors.Is(err, ErrUnsupportedContentType):
-					writeError(w, http.StatusBadRequest, "content type must be audio/* or application/pdf")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "unsupported_content_type", "content type must be audio/* or application/pdf")
 				case errors.Is(err, ErrInvalidSizeBytes):
-					writeError(w, http.StatusBadRequest, "file size must be greater than zero")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_file_size", "file size must be greater than zero")
 				case errors.Is(err, ErrFileTooLarge):
-					writeError(w, http.StatusBadRequest, "file exceeds the maximum allowed size")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "file_too_large", "file exceeds the maximum allowed size")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor cannot manage this voice kit")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor cannot manage this voice kit")
 				case errors.Is(err, ErrVoiceKitNotFound):
-					writeError(w, http.StatusNotFound, "voice kit not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "voice_kit_not_found", "voice kit not found")
 				case errors.Is(err, ErrStorageUnavailable):
-					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
+					platformweb.WriteError(w, r, http.StatusServiceUnavailable, "storage_unavailable", "storage unavailable")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusCreated, file)
+			platformweb.WriteJSON(w, http.StatusCreated, file)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -91,16 +102,16 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidVoiceKitID):
-					writeError(w, http.StatusBadRequest, "voice kit id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_voice_kit_id", "voice kit id is required")
 				case errors.Is(err, ErrVoiceKitNotFound):
-					writeError(w, http.StatusNotFound, "voice kit not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "voice_kit_not_found", "voice kit not found")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, map[string][]File{"items": items})
+			platformweb.WriteJSON(w, http.StatusOK, map[string][]File{"items": items})
 		})
 	})
 
@@ -108,13 +119,13 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -122,15 +133,15 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidFileID):
-					writeError(w, http.StatusBadRequest, "file id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_file_id", "file id is required")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor cannot manage this voice kit")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor cannot manage this voice kit")
 				case errors.Is(err, ErrFileNotFound):
-					writeError(w, http.StatusNotFound, "file not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "file_not_found", "file not found")
 				case errors.Is(err, ErrStorageUnavailable):
-					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
+					platformweb.WriteError(w, r, http.StatusServiceUnavailable, "storage_unavailable", "storage unavailable")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
@@ -141,13 +152,13 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Get("/download-url", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -155,31 +166,18 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidFileID):
-					writeError(w, http.StatusBadRequest, "file id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_file_id", "file id is required")
 				case errors.Is(err, ErrFileNotFound):
-					writeError(w, http.StatusNotFound, "file not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "file_not_found", "file not found")
 				case errors.Is(err, ErrStorageUnavailable):
-					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
+					platformweb.WriteError(w, r, http.StatusServiceUnavailable, "storage_unavailable", "storage unavailable")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, result)
+			platformweb.WriteJSON(w, http.StatusOK, result)
 		})
-	})
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]string{
-		"error": message,
 	})
 }

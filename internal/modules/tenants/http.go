@@ -1,10 +1,10 @@
 package tenants
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,16 +27,16 @@ func RegisterPublicRoutes(router chi.Router, service *Service) {
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrInvalidTenantSlug):
-				writeError(w, http.StatusBadRequest, "tenant slug is required")
+				platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_tenant_slug", "tenant slug is required")
 			case errors.Is(err, ErrTenantNotFound):
-				writeError(w, http.StatusNotFound, "tenant not found")
+				platformweb.WriteError(w, r, http.StatusNotFound, "tenant_not_found", "tenant not found")
 			default:
-				writeError(w, http.StatusInternalServerError, "internal server error")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 			return
 		}
 
-		writeJSON(w, http.StatusOK, bootstrapResponse{
+		platformweb.WriteJSON(w, http.StatusOK, bootstrapResponse{
 			Slug:        tenant.Slug,
 			DisplayName: tenant.DisplayName,
 			Branding: brandingResponse{
@@ -46,18 +46,5 @@ func RegisterPublicRoutes(router chi.Router, service *Service) {
 				CustomDomain:   tenant.Branding.CustomDomain,
 			},
 		})
-	})
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]string{
-		"error": message,
 	})
 }

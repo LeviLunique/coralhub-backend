@@ -1,11 +1,11 @@
 package choirs
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/LeviLunique/coralhub-backend/internal/platform/requestctx"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -14,19 +14,19 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
 			var input CreateInput
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid request body")
+			if err := platformweb.DecodeJSONBody(r, &input); err != nil {
+				platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_request_body", "request body must be a single valid JSON object")
 				return
 			}
 
@@ -34,52 +34,52 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidChoirName):
-					writeError(w, http.StatusBadRequest, "choir name is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_choir_name", "choir name is required")
 				case errors.Is(err, ErrChoirNameTaken):
-					writeError(w, http.StatusConflict, "choir name already exists")
+					platformweb.WriteError(w, r, http.StatusConflict, "choir_name_taken", "choir name already exists")
 				case errors.Is(err, ErrInvalidActorID):
-					writeError(w, http.StatusUnauthorized, "actor identity is required")
+					platformweb.WriteError(w, r, http.StatusUnauthorized, "invalid_actor", "actor identity is required")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusCreated, choir)
+			platformweb.WriteJSON(w, http.StatusCreated, choir)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
 			items, err := service.List(r.Context(), tenant.ID, actor.ID)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "internal server error")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				return
 			}
 
-			writeJSON(w, http.StatusOK, map[string][]Choir{"items": items})
+			platformweb.WriteJSON(w, http.StatusOK, map[string][]Choir{"items": items})
 		})
 
 		r.Get("/{choirID}", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -87,31 +87,18 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidChoirID):
-					writeError(w, http.StatusBadRequest, "choir id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_choir_id", "choir id is required")
 				case errors.Is(err, ErrInvalidActorID):
-					writeError(w, http.StatusUnauthorized, "actor identity is required")
+					platformweb.WriteError(w, r, http.StatusUnauthorized, "invalid_actor", "actor identity is required")
 				case errors.Is(err, ErrChoirNotFound):
-					writeError(w, http.StatusNotFound, "choir not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "choir_not_found", "choir not found")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, choir)
+			platformweb.WriteJSON(w, http.StatusOK, choir)
 		})
-	})
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]string{
-		"error": message,
 	})
 }
