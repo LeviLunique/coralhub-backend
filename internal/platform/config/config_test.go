@@ -33,6 +33,14 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 		t.Fatalf("Worker.PollInterval = %v, want %v", cfg.Worker.PollInterval, 5*time.Second)
 	}
 
+	if cfg.Firebase.Enabled {
+		t.Fatal("Firebase.Enabled = true, want false by default")
+	}
+
+	if cfg.Firebase.CredentialsFile != "" {
+		t.Fatalf("Firebase.CredentialsFile = %q, want empty string", cfg.Firebase.CredentialsFile)
+	}
+
 	if cfg.Worker.BatchSize != 10 {
 		t.Fatalf("Worker.BatchSize = %d, want %d", cfg.Worker.BatchSize, 10)
 	}
@@ -60,5 +68,23 @@ func TestLoadFromEnvRequiresSplitDatabaseFields(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when split database config is missing")
+	}
+}
+
+func TestLoadFromEnvRequiresFirebaseCredentialsWhenEnabled(t *testing.T) {
+	_, err := loadFromEnv(func(key string) (string, bool) {
+		values := map[string]string{
+			"DB_HOST":          "localhost",
+			"DB_PORT":          "5433",
+			"DB_USER":          "coralhub",
+			"DB_PASSWORD":      "coralhub",
+			"DB_NAME":          "coralhub",
+			"FIREBASE_ENABLED": "true",
+		}
+		value, ok := values[key]
+		return value, ok
+	})
+	if err == nil {
+		t.Fatal("expected error when firebase is enabled without credentials file")
 	}
 }

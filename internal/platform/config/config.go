@@ -16,6 +16,7 @@ type Config struct {
 	AppEnv        string
 	HTTP          HTTPConfig
 	Database      DatabaseConfig
+	Firebase      FirebaseConfig
 	Worker        WorkerConfig
 	Storage       StorageConfig
 	Observability ObservabilityConfig
@@ -48,6 +49,11 @@ type WorkerConfig struct {
 	MaxAttempts  int32
 	RetryBackoff time.Duration
 	LeaseTimeout time.Duration
+}
+
+type FirebaseConfig struct {
+	Enabled         bool
+	CredentialsFile string
 }
 
 type StorageConfig struct {
@@ -94,6 +100,10 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 			MaxConnIdleTime:   durationOrDefault(lookup, "DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
 			HealthCheckPeriod: durationOrDefault(lookup, "DB_HEALTH_CHECK_PERIOD", 30*time.Second),
 		},
+		Firebase: FirebaseConfig{
+			Enabled:         boolOrDefault(lookup, "FIREBASE_ENABLED", false),
+			CredentialsFile: envOrDefault(lookup, "FIREBASE_CREDENTIALS_FILE", ""),
+		},
 		Worker: WorkerConfig{
 			PollInterval: durationOrDefault(lookup, "WORKER_POLL_INTERVAL", 5*time.Second),
 			BatchSize:    int32OrDefault(lookup, "WORKER_BATCH_SIZE", 10),
@@ -129,6 +139,10 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 
 	if strings.TrimSpace(cfg.Database.Name) == "" {
 		return Config{}, errors.New("DB_NAME is required")
+	}
+
+	if cfg.Firebase.Enabled && strings.TrimSpace(cfg.Firebase.CredentialsFile) == "" {
+		return Config{}, errors.New("FIREBASE_CREDENTIALS_FILE is required when FIREBASE_ENABLED=true")
 	}
 
 	return cfg, nil

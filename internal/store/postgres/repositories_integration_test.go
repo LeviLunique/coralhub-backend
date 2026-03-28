@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/devices"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
@@ -150,6 +151,57 @@ func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
 
 	if created.UserID != target.ID {
 		t.Fatalf("created.UserID = %q, want %q", created.UserID, target.ID)
+	}
+}
+
+func TestDeviceRepositoryCreateListAndDeactivateIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempUsersTable(t, ctx, tx)
+	createTempDeviceTokensTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	userRepository := NewUserRepository(queries)
+	user, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "device-owner@example.com",
+		FullName: "Device Owner",
+	})
+	if err != nil {
+		t.Fatalf("Create user error = %v", err)
+	}
+
+	repository := NewDeviceRepository(queries)
+	created, err := repository.Create(ctx, devices.CreateParams{
+		TenantID: tenant.ID,
+		UserID:   user.ID,
+		Platform: devices.PlatformAndroid,
+		Token:    "token-1",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	listed, err := repository.ListActiveByUserID(ctx, tenant.ID, user.ID)
+	if err != nil {
+		t.Fatalf("ListActiveByUserID() error = %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("len(listed) = %d, want 1", len(listed))
+	}
+	if listed[0].ID != created.ID {
+		t.Fatalf("listed[0].ID = %q, want %q", listed[0].ID, created.ID)
+	}
+
+	if err := repository.DeactivateByToken(ctx, tenant.ID, "token-1"); err != nil {
+		t.Fatalf("DeactivateByToken() error = %v", err)
+	}
+
+	listed, err = repository.ListActiveByUserID(ctx, tenant.ID, user.ID)
+	if err != nil {
+		t.Fatalf("ListActiveByUserID() after deactivate error = %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("len(listed) after deactivate = %d, want 0", len(listed))
 	}
 }
 
@@ -793,6 +845,29 @@ func createTempKitFilesTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	`)
 	if err != nil {
 		t.Fatalf("creating temp kit_files table: %v", err)
+	}
+}
+
+func createTempDeviceTokensTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE device_tokens (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			user_id UUID NOT NULL,
+			platform TEXT NOT NULL,
+			token TEXT NOT NULL,
+			active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT device_tokens_platform_check CHECK (platform IN ('ios', 'android', 'web')),
+			CONSTRAINT device_tokens_tenant_token_unique UNIQUE (tenant_id, token)
+		) ON COMMIT DROP;
+		CREATE INDEX device_tokens_user_active_idx ON device_tokens (user_id, active);
+	`)
+	if err != nil {
+		t.Fatalf("creating temp device_tokens table: %v", err)
 	}
 }
 
