@@ -8,6 +8,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditLog struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	EntityType  string             `json:"entity_type"`
+	EntityID    pgtype.UUID        `json:"entity_id"`
+	Action      string             `json:"action"`
+	ActorID     pgtype.UUID        `json:"actor_id"`
+	OccurredAt  pgtype.Timestamptz `json:"occurred_at"`
+	PayloadJson []byte             `json:"payload_json"`
+}
+
 type Choir struct {
 	ID          pgtype.UUID        `json:"id"`
 	TenantID    pgtype.UUID        `json:"tenant_id"`

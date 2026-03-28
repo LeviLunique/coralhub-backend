@@ -60,10 +60,11 @@ func (s *Service) AddMember(ctx context.Context, tenantID string, choirID string
 	}
 
 	return s.repository.Create(ctx, CreateParams{
-		TenantID: normalizedTenantID,
-		ChoirID:  normalizedChoirID,
-		UserID:   normalizedUserID,
-		Role:     role,
+		TenantID:    normalizedTenantID,
+		ChoirID:     normalizedChoirID,
+		UserID:      normalizedUserID,
+		Role:        role,
+		ActorUserID: normalizedActorID,
 	})
 }
 

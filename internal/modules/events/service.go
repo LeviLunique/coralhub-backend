@@ -65,6 +65,7 @@ func (s *Service) Create(ctx context.Context, tenantID string, choirID string, a
 	return s.repository.Create(ctx, CreateParams{
 		TenantID:    normalizedTenantID,
 		ChoirID:     normalizedChoirID,
+		ActorUserID: normalizedActorID,
 		Title:       normalizedTitle,
 		Description: description,
 		EventType:   eventType,
@@ -119,6 +120,7 @@ func (s *Service) Update(ctx context.Context, tenantID string, eventID string, a
 	return s.repository.Update(ctx, UpdateParams{
 		TenantID:    normalizedTenantID,
 		EventID:     normalizedEventID,
+		ActorUserID: normalizedActorID,
 		Title:       normalizedTitle,
 		Description: description,
 		EventType:   eventType,
@@ -205,7 +207,11 @@ func (s *Service) Cancel(ctx context.Context, tenantID string, eventID string, a
 		return ErrForbidden
 	}
 
-	return s.repository.Cancel(ctx, normalizedTenantID, normalizedEventID)
+	return s.repository.Cancel(ctx, CancelParams{
+		TenantID:    normalizedTenantID,
+		EventID:     normalizedEventID,
+		ActorUserID: normalizedActorID,
+	})
 }
 
 func normalizeCreateInput(tenantID string, choirID string, actorUserID string, input CreateInput) (string, string, string, string, string, *string, *string, time.Time, error) {

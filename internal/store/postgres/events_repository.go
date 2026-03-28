@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
+	moduleaudit "github.com/LeviLunique/coralhub-backend/internal/modules/audit"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -53,6 +55,23 @@ func (r *EventRepository) Create(ctx context.Context, params events.CreateParams
 	}
 
 	if err := insertScheduledNotifications(ctx, txQueries, tenantID, row.ID, params.Reminders); err != nil {
+		return events.Event{}, err
+	}
+
+	now := time.Now().UTC()
+	if _, err := createAuditLog(ctx, txQueries, tenantID, row.ID, moduleaudit.ActionEventCreated, moduleaudit.EntityTypeEvent, stringPointer(params.ActorUserID), now, map[string]any{
+		"title":      params.Title,
+		"event_type": params.EventType,
+		"start_at":   params.StartAt.UTC(),
+	}); err != nil {
+		return events.Event{}, err
+	}
+	if _, err := createAuditLog(ctx, txQueries, tenantID, row.ID, moduleaudit.ActionNotificationsGenerated, moduleaudit.EntityTypeEvent, stringPointer(params.ActorUserID), now, map[string]any{
+		"event_id":           uuidString(row.ID),
+		"generated_count":    len(params.Reminders),
+		"reminder_types":     collectReminderTypes(params.Reminders),
+		"notification_state": events.NotificationStatusPending,
+	}); err != nil {
 		return events.Event{}, err
 	}
 
@@ -107,6 +126,23 @@ func (r *EventRepository) Update(ctx context.Context, params events.UpdateParams
 	}
 
 	if err := insertScheduledNotifications(ctx, txQueries, tenantID, row.ID, params.Reminders); err != nil {
+		return events.Event{}, err
+	}
+
+	now := time.Now().UTC()
+	if _, err := createAuditLog(ctx, txQueries, tenantID, row.ID, moduleaudit.ActionEventUpdated, moduleaudit.EntityTypeEvent, stringPointer(params.ActorUserID), now, map[string]any{
+		"title":      params.Title,
+		"event_type": params.EventType,
+		"start_at":   params.StartAt.UTC(),
+	}); err != nil {
+		return events.Event{}, err
+	}
+	if _, err := createAuditLog(ctx, txQueries, tenantID, row.ID, moduleaudit.ActionNotificationsGenerated, moduleaudit.EntityTypeEvent, stringPointer(params.ActorUserID), now, map[string]any{
+		"event_id":           uuidString(row.ID),
+		"generated_count":    len(params.Reminders),
+		"reminder_types":     collectReminderTypes(params.Reminders),
+		"notification_state": events.NotificationStatusPending,
+	}); err != nil {
 		return events.Event{}, err
 	}
 
@@ -175,13 +211,13 @@ func (r *EventRepository) ListByChoirID(ctx context.Context, tenantID string, ch
 	return items, nil
 }
 
-func (r *EventRepository) Cancel(ctx context.Context, tenantID string, eventID string) error {
-	tenantUUID, err := parseUUID(tenantID)
+func (r *EventRepository) Cancel(ctx context.Context, params events.CancelParams) error {
+	tenantUUID, err := parseUUID(params.TenantID)
 	if err != nil {
 		return events.ErrInvalidTenantID
 	}
 
-	eventUUID, err := parseUUID(eventID)
+	eventUUID, err := parseUUID(params.EventID)
 	if err != nil {
 		return events.ErrInvalidEventID
 	}
@@ -209,6 +245,12 @@ func (r *EventRepository) Cancel(ctx context.Context, tenantID string, eventID s
 	if _, err := txQueries.CancelPendingScheduledNotificationsByEventID(ctx, sqlc.CancelPendingScheduledNotificationsByEventIDParams{
 		TenantID: tenantUUID,
 		EventID:  eventUUID,
+	}); err != nil {
+		return err
+	}
+
+	if _, err := createAuditLog(ctx, txQueries, tenantUUID, eventUUID, moduleaudit.ActionEventCanceled, moduleaudit.EntityTypeEvent, stringPointer(params.ActorUserID), time.Now().UTC(), map[string]any{
+		"event_id": uuidString(eventUUID),
 	}); err != nil {
 		return err
 	}
@@ -250,4 +292,13 @@ func mapEventRow(row sqlc.Event) events.Event {
 		StartAt:     row.StartAt.Time.UTC(),
 		Active:      row.Active,
 	}
+}
+
+func collectReminderTypes(reminders []events.ScheduledReminder) []string {
+	types := make([]string, 0, len(reminders))
+	for _, reminder := range reminders {
+		types = append(types, reminder.ReminderType)
+	}
+
+	return types
 }

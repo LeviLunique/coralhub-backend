@@ -435,7 +435,7 @@ type eventStubRepository struct {
 	err      error
 	create   events.CreateParams
 	update   events.UpdateParams
-	canceled string
+	canceled events.CancelParams
 }
 
 func (s *eventStubRepository) Create(_ context.Context, params events.CreateParams) (events.Event, error) {
@@ -472,11 +472,11 @@ func (s *eventStubRepository) ListByChoirID(_ context.Context, _, _ string) ([]e
 	return s.events, nil
 }
 
-func (s *eventStubRepository) Cancel(_ context.Context, _, eventID string) error {
+func (s *eventStubRepository) Cancel(_ context.Context, params events.CancelParams) error {
 	if s.err != nil {
 		return s.err
 	}
 
-	s.canceled = eventID
+	s.canceled = params
 	return nil
 }

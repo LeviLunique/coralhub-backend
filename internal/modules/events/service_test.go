@@ -15,7 +15,7 @@ type stubRepository struct {
 	err      error
 	create   CreateParams
 	update   UpdateParams
-	canceled string
+	canceled CancelParams
 }
 
 func (s *stubRepository) Create(_ context.Context, params CreateParams) (Event, error) {
@@ -48,11 +48,11 @@ func (s *stubRepository) ListByChoirID(_ context.Context, _, _ string) ([]Event,
 	return s.events, nil
 }
 
-func (s *stubRepository) Cancel(_ context.Context, _, eventID string) error {
+func (s *stubRepository) Cancel(_ context.Context, params CancelParams) error {
 	if s.err != nil {
 		return s.err
 	}
-	s.canceled = eventID
+	s.canceled = params
 	return nil
 }
 

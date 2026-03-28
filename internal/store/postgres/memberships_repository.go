@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
+	moduleaudit "github.com/LeviLunique/coralhub-backend/internal/modules/audit"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -11,11 +13,12 @@ import (
 )
 
 type MembershipRepository struct {
+	db      txBeginner
 	queries *sqlc.Queries
 }
 
-func NewMembershipRepository(queries *sqlc.Queries) *MembershipRepository {
-	return &MembershipRepository{queries: queries}
+func NewMembershipRepository(db txBeginner, queries *sqlc.Queries) *MembershipRepository {
+	return &MembershipRepository{db: db, queries: queries}
 }
 
 func (r *MembershipRepository) Create(ctx context.Context, params memberships.CreateParams) (memberships.Membership, error) {
@@ -34,7 +37,16 @@ func (r *MembershipRepository) Create(ctx context.Context, params memberships.Cr
 		return memberships.Membership{}, memberships.ErrInvalidUserID
 	}
 
-	row, err := r.queries.CreateChoirMember(ctx, sqlc.CreateChoirMemberParams{
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return memberships.Membership{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	txQueries := r.queries.WithTx(tx)
+	row, err := txQueries.CreateChoirMember(ctx, sqlc.CreateChoirMemberParams{
 		TenantID: tenantID,
 		ChoirID:  choirID,
 		UserID:   userID,
@@ -46,6 +58,18 @@ func (r *MembershipRepository) Create(ctx context.Context, params memberships.Cr
 			return memberships.Membership{}, memberships.ErrMembershipAlreadyExist
 		}
 
+		return memberships.Membership{}, err
+	}
+
+	if _, err := createAuditLog(ctx, txQueries, tenantID, row.ID, moduleaudit.ActionMembershipAdded, moduleaudit.EntityTypeMembership, stringPointer(params.ActorUserID), time.Now().UTC(), map[string]any{
+		"choir_id": uuidString(row.ChoirID),
+		"user_id":  uuidString(row.UserID),
+		"role":     row.Role,
+	}); err != nil {
+		return memberships.Membership{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return memberships.Membership{}, err
 	}
 
