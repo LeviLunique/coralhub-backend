@@ -18,6 +18,11 @@ func NewFileRepository(queries *sqlc.Queries) *FileRepository {
 }
 
 func (r *FileRepository) Create(ctx context.Context, params modulefiles.CreateParams) (modulefiles.File, error) {
+	fileID, err := parseUUID(params.ID)
+	if err != nil {
+		return modulefiles.File{}, modulefiles.ErrInvalidFileID
+	}
+
 	tenantID, err := parseUUID(params.TenantID)
 	if err != nil {
 		return modulefiles.File{}, modulefiles.ErrInvalidTenantID
@@ -29,6 +34,7 @@ func (r *FileRepository) Create(ctx context.Context, params modulefiles.CreatePa
 	}
 
 	row, err := r.queries.CreateKitFile(ctx, sqlc.CreateKitFileParams{
+		ID:               fileID,
 		TenantID:         tenantID,
 		VoiceKitID:       voiceKitID,
 		OriginalFilename: params.OriginalFilename,

@@ -9,6 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const maxUploadRequestBytes = maxUploadSizeBytes + (1 << 20)
+
 func RegisterRoutes(router chi.Router, service *Service) {
 	router.Route("/voice-kits/{voiceKitID}/files", func(r chi.Router) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
@@ -24,31 +26,45 @@ func RegisterRoutes(router chi.Router, service *Service) {
 				return
 			}
 
-			var input CreateInput
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid request body")
+			r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes)
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid multipart form")
 				return
 			}
 
-			file, err := service.Create(r.Context(), tenant.ID, chi.URLParam(r, "voiceKitID"), actor.ID, input)
+			uploadedFile, header, err := r.FormFile("file")
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "file form field is required")
+				return
+			}
+			defer uploadedFile.Close()
+
+			file, err := service.Upload(r.Context(), tenant.ID, tenant.Slug, chi.URLParam(r, "voiceKitID"), actor.ID, UploadInput{
+				OriginalFilename: header.Filename,
+				ContentType:      header.Header.Get("Content-Type"),
+				SizeBytes:        header.Size,
+				Content:          uploadedFile,
+			})
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidVoiceKitID):
 					writeError(w, http.StatusBadRequest, "voice kit id is required")
 				case errors.Is(err, ErrInvalidOriginalFilename):
-					writeError(w, http.StatusBadRequest, "original filename is required")
-				case errors.Is(err, ErrInvalidStoredFilename):
-					writeError(w, http.StatusBadRequest, "stored filename is required")
+					writeError(w, http.StatusBadRequest, "uploaded filename is required")
 				case errors.Is(err, ErrInvalidContentType):
-					writeError(w, http.StatusBadRequest, "content type is required")
-				case errors.Is(err, ErrInvalidStorageKey):
-					writeError(w, http.StatusBadRequest, "storage key is required")
+					writeError(w, http.StatusBadRequest, "valid content type is required")
+				case errors.Is(err, ErrUnsupportedContentType):
+					writeError(w, http.StatusBadRequest, "content type must be audio/* or application/pdf")
 				case errors.Is(err, ErrInvalidSizeBytes):
-					writeError(w, http.StatusBadRequest, "size bytes must be greater than zero")
+					writeError(w, http.StatusBadRequest, "file size must be greater than zero")
+				case errors.Is(err, ErrFileTooLarge):
+					writeError(w, http.StatusBadRequest, "file exceeds the maximum allowed size")
 				case errors.Is(err, ErrForbidden):
 					writeError(w, http.StatusForbidden, "actor cannot manage this voice kit")
 				case errors.Is(err, ErrVoiceKitNotFound):
 					writeError(w, http.StatusNotFound, "voice kit not found")
+				case errors.Is(err, ErrStorageUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
 				default:
 					writeError(w, http.StatusInternalServerError, "internal server error")
 				}
@@ -111,6 +127,8 @@ func RegisterRoutes(router chi.Router, service *Service) {
 					writeError(w, http.StatusForbidden, "actor cannot manage this voice kit")
 				case errors.Is(err, ErrFileNotFound):
 					writeError(w, http.StatusNotFound, "file not found")
+				case errors.Is(err, ErrStorageUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
 				default:
 					writeError(w, http.StatusInternalServerError, "internal server error")
 				}
@@ -118,6 +136,37 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			}
 
 			w.WriteHeader(http.StatusNoContent)
+		})
+
+		r.Get("/download-url", func(w http.ResponseWriter, r *http.Request) {
+			tenant, ok := requestctx.TenantFromContext(r.Context())
+			if !ok {
+				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				return
+			}
+
+			actor, ok := requestctx.ActorFromContext(r.Context())
+			if !ok {
+				writeError(w, http.StatusInternalServerError, "actor context missing")
+				return
+			}
+
+			result, err := service.GetDownloadURL(r.Context(), tenant.ID, chi.URLParam(r, "fileID"), actor.ID)
+			if err != nil {
+				switch {
+				case errors.Is(err, ErrInvalidFileID):
+					writeError(w, http.StatusBadRequest, "file id is required")
+				case errors.Is(err, ErrFileNotFound):
+					writeError(w, http.StatusNotFound, "file not found")
+				case errors.Is(err, ErrStorageUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "storage unavailable")
+				default:
+					writeError(w, http.StatusInternalServerError, "internal server error")
+				}
+				return
+			}
+
+			writeJSON(w, http.StatusOK, result)
 		})
 	})
 }
