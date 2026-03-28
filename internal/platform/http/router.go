@@ -5,12 +5,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
+	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(logger *slog.Logger, tenantService *tenants.Service) http.Handler {
+func NewRouter(
+	logger *slog.Logger,
+	tenantService *tenants.Service,
+	choirService *choirs.Service,
+	userService *moduleusers.Service,
+) http.Handler {
 	router := chi.NewRouter()
 
 	router.Use(chimiddleware.RequestID)
@@ -39,6 +46,20 @@ func NewRouter(logger *slog.Logger, tenantService *tenants.Service) http.Handler
 				tenants.RegisterPublicRoutes(public, tenantService)
 			}
 		})
+
+		if tenantService != nil {
+			r.Group(func(protected chi.Router) {
+				protected.Use(RequireTenantContext(tenantService))
+
+				if choirService != nil {
+					choirs.RegisterRoutes(protected, choirService)
+				}
+
+				if userService != nil {
+					moduleusers.RegisterRoutes(protected, userService)
+				}
+			})
+		}
 	})
 
 	return router

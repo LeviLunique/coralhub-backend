@@ -9,7 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
+	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformhttp "github.com/LeviLunique/coralhub-backend/internal/platform/http"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
@@ -41,10 +43,14 @@ func main() {
 	queries := sqlc.New(pool)
 	tenantRepository := postgres.NewTenantRepository(queries)
 	tenantService := tenants.NewService(tenantRepository)
+	choirRepository := postgres.NewChoirRepository(queries)
+	choirService := choirs.NewService(choirRepository)
+	userRepository := postgres.NewUserRepository(queries)
+	userService := moduleusers.NewService(userRepository)
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger, tenantService),
+		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
