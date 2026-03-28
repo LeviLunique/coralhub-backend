@@ -93,6 +93,20 @@ func (q *Queries) ClaimDueScheduledNotifications(ctx context.Context, arg ClaimD
 	return items, nil
 }
 
+const deleteExpiredScheduledNotifications = `-- name: DeleteExpiredScheduledNotifications :execrows
+DELETE FROM scheduled_notifications
+WHERE status IN ('sent', 'failed', 'canceled', 'invalid_token')
+	AND updated_at < $1
+`
+
+func (q *Queries) DeleteExpiredScheduledNotifications(ctx context.Context, updatedAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredScheduledNotifications, updatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failScheduledNotification = `-- name: FailScheduledNotification :execrows
 UPDATE scheduled_notifications
 SET status = 'failed',

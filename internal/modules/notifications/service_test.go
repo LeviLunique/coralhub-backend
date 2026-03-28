@@ -8,14 +8,16 @@ import (
 )
 
 type stubRepository struct {
-	claimed     []Notification
-	claimErr    error
-	sent        []FinalizeParams
-	retried     []RetryParams
-	failed      []FinalizeParams
-	invalid     []FinalizeParams
-	finalizeErr error
-	retryErr    error
+	claimed       []Notification
+	claimErr      error
+	sent          []FinalizeParams
+	retried       []RetryParams
+	failed        []FinalizeParams
+	invalid       []FinalizeParams
+	cleanupBefore []time.Time
+	cleanupCount  int64
+	finalizeErr   error
+	retryErr      error
 }
 
 func (s *stubRepository) ClaimDue(_ context.Context, _ ClaimParams) ([]Notification, error) {
@@ -55,6 +57,11 @@ func (s *stubRepository) MarkInvalidToken(_ context.Context, params FinalizePara
 	}
 	s.invalid = append(s.invalid, params)
 	return nil
+}
+
+func (s *stubRepository) CleanupTerminalBefore(_ context.Context, before time.Time) (int64, error) {
+	s.cleanupBefore = append(s.cleanupBefore, before)
+	return s.cleanupCount, nil
 }
 
 type stubSender struct {
@@ -185,6 +192,27 @@ func TestServiceProcessDueRejectsUnknownDeliveryResult(t *testing.T) {
 	_, err := service.ProcessDue(context.Background(), 10, 30*time.Second)
 	if !errors.Is(err, ErrUnknownDeliveryResult) {
 		t.Fatalf("ProcessDue() error = %v, want %v", err, ErrUnknownDeliveryResult)
+	}
+}
+
+func TestServiceCleanupExpiredUsesRetentionCutoff(t *testing.T) {
+	now := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
+	repository := &stubRepository{cleanupCount: 4}
+	service := NewService(repository, &stubSender{}, 3, time.Minute)
+	service.now = func() time.Time { return now }
+
+	deleted, err := service.CleanupExpired(context.Background(), 24*time.Hour)
+	if err != nil {
+		t.Fatalf("CleanupExpired() error = %v", err)
+	}
+	if deleted != 4 {
+		t.Fatalf("deleted = %d, want 4", deleted)
+	}
+	if len(repository.cleanupBefore) != 1 {
+		t.Fatalf("len(repository.cleanupBefore) = %d, want 1", len(repository.cleanupBefore))
+	}
+	if repository.cleanupBefore[0] != now.Add(-24*time.Hour) {
+		t.Fatalf("cleanupBefore = %v, want %v", repository.cleanupBefore[0], now.Add(-24*time.Hour))
 	}
 }
 

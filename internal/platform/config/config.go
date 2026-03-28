@@ -23,10 +23,11 @@ type Config struct {
 }
 
 type HTTPConfig struct {
-	Addr         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
+	Addr           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	IdleTimeout    time.Duration
+	HandlerTimeout time.Duration
 }
 
 type DatabaseConfig struct {
@@ -44,11 +45,12 @@ type DatabaseConfig struct {
 }
 
 type WorkerConfig struct {
-	PollInterval time.Duration
-	BatchSize    int32
-	MaxAttempts  int32
-	RetryBackoff time.Duration
-	LeaseTimeout time.Duration
+	PollInterval          time.Duration
+	BatchSize             int32
+	MaxAttempts           int32
+	RetryBackoff          time.Duration
+	LeaseTimeout          time.Duration
+	NotificationRetention time.Duration
 }
 
 type FirebaseConfig struct {
@@ -82,10 +84,11 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 	cfg := Config{
 		AppEnv: envOrDefault(lookup, "APP_ENV", "development"),
 		HTTP: HTTPConfig{
-			Addr:         envOrDefault(lookup, "HTTP_ADDR", ":8080"),
-			ReadTimeout:  durationOrDefault(lookup, "HTTP_READ_TIMEOUT", 10*time.Second),
-			WriteTimeout: durationOrDefault(lookup, "HTTP_WRITE_TIMEOUT", 15*time.Second),
-			IdleTimeout:  durationOrDefault(lookup, "HTTP_IDLE_TIMEOUT", 60*time.Second),
+			Addr:           envOrDefault(lookup, "HTTP_ADDR", ":8080"),
+			ReadTimeout:    durationOrDefault(lookup, "HTTP_READ_TIMEOUT", 10*time.Second),
+			WriteTimeout:   durationOrDefault(lookup, "HTTP_WRITE_TIMEOUT", 15*time.Second),
+			IdleTimeout:    durationOrDefault(lookup, "HTTP_IDLE_TIMEOUT", 60*time.Second),
+			HandlerTimeout: durationOrDefault(lookup, "HTTP_HANDLER_TIMEOUT", 30*time.Second),
 		},
 		Database: DatabaseConfig{
 			Host:              envOrDefault(lookup, "DB_HOST", ""),
@@ -105,11 +108,12 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 			CredentialsFile: envOrDefault(lookup, "FIREBASE_CREDENTIALS_FILE", ""),
 		},
 		Worker: WorkerConfig{
-			PollInterval: durationOrDefault(lookup, "WORKER_POLL_INTERVAL", 5*time.Second),
-			BatchSize:    int32OrDefault(lookup, "WORKER_BATCH_SIZE", 10),
-			MaxAttempts:  int32OrDefault(lookup, "WORKER_MAX_ATTEMPTS", 3),
-			RetryBackoff: durationOrDefault(lookup, "WORKER_RETRY_BACKOFF", time.Minute),
-			LeaseTimeout: durationOrDefault(lookup, "WORKER_LEASE_TIMEOUT", 30*time.Second),
+			PollInterval:          durationOrDefault(lookup, "WORKER_POLL_INTERVAL", 5*time.Second),
+			BatchSize:             int32OrDefault(lookup, "WORKER_BATCH_SIZE", 10),
+			MaxAttempts:           int32OrDefault(lookup, "WORKER_MAX_ATTEMPTS", 3),
+			RetryBackoff:          durationOrDefault(lookup, "WORKER_RETRY_BACKOFF", time.Minute),
+			LeaseTimeout:          durationOrDefault(lookup, "WORKER_LEASE_TIMEOUT", 30*time.Second),
+			NotificationRetention: durationOrDefault(lookup, "WORKER_NOTIFICATION_RETENTION", 720*time.Hour),
 		},
 		Storage: StorageConfig{
 			Endpoint:  envOrDefault(lookup, "STORAGE_ENDPOINT", "localhost:9000"),

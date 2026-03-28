@@ -5,11 +5,14 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	platformobservability "github.com/LeviLunique/coralhub-backend/internal/platform/observability"
 )
 
 var (
 	ErrInvalidClaimLimit     = errors.New("invalid claim limit")
 	ErrInvalidLeaseTimeout   = errors.New("invalid lease timeout")
+	ErrInvalidRetention      = errors.New("invalid retention period")
 	ErrUnknownDeliveryResult = errors.New("unknown delivery result")
 	ErrNotificationLeaseLost = errors.New("notification lease lost")
 )
@@ -74,6 +77,14 @@ func (s *Service) ProcessDue(ctx context.Context, limit int32, leaseTimeout time
 	return len(notifications), nil
 }
 
+func (s *Service) CleanupExpired(ctx context.Context, retention time.Duration) (int64, error) {
+	if retention <= 0 {
+		return 0, ErrInvalidRetention
+	}
+
+	return s.repository.CleanupTerminalBefore(ctx, s.now().UTC().Add(-retention))
+}
+
 func (s *Service) processOne(ctx context.Context, notification Notification, processedAt time.Time) error {
 	if notification.ProcessingStartedAt == nil || notification.ProcessingStartedAt.IsZero() {
 		return ErrNotificationLeaseLost
@@ -84,35 +95,47 @@ func (s *Service) processOne(ctx context.Context, notification Notification, pro
 
 	switch result.Kind {
 	case DeliverySent:
-		return s.repository.MarkSent(ctx, FinalizeParams{
+		err := s.repository.MarkSent(ctx, FinalizeParams{
 			TenantID:            notification.TenantID,
 			NotificationID:      notification.ID,
 			ProcessingStartedAt: notification.ProcessingStartedAt.UTC(),
 			At:                  processedAt,
 		})
+		if err == nil {
+			platformobservability.DefaultMetrics().IncrementNotificationDelivery(string(DeliverySent))
+		}
+		return err
 	case DeliveryInvalidToken:
 		if lastError == "" {
 			lastError = "invalid token"
 		}
-		return s.repository.MarkInvalidToken(ctx, FinalizeParams{
+		err := s.repository.MarkInvalidToken(ctx, FinalizeParams{
 			TenantID:            notification.TenantID,
 			NotificationID:      notification.ID,
 			ProcessingStartedAt: notification.ProcessingStartedAt.UTC(),
 			At:                  processedAt,
 			LastError:           lastError,
 		})
+		if err == nil {
+			platformobservability.DefaultMetrics().IncrementNotificationDelivery(string(DeliveryInvalidToken))
+		}
+		return err
 	case DeliveryTransientFailure:
 		if lastError == "" {
 			lastError = "transient delivery failure"
 		}
 		if notification.Attempts+1 >= s.maxAttempts {
-			return s.repository.MarkFailed(ctx, FinalizeParams{
+			err := s.repository.MarkFailed(ctx, FinalizeParams{
 				TenantID:            notification.TenantID,
 				NotificationID:      notification.ID,
 				ProcessingStartedAt: notification.ProcessingStartedAt.UTC(),
 				At:                  processedAt,
 				LastError:           lastError,
 			})
+			if err == nil {
+				platformobservability.DefaultMetrics().IncrementNotificationDelivery("failed")
+			}
+			return err
 		}
 
 		return s.repository.Retry(ctx, RetryParams{

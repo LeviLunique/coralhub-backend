@@ -33,6 +33,10 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 		t.Fatalf("Worker.PollInterval = %v, want %v", cfg.Worker.PollInterval, 5*time.Second)
 	}
 
+	if cfg.HTTP.HandlerTimeout != 30*time.Second {
+		t.Fatalf("HTTP.HandlerTimeout = %v, want %v", cfg.HTTP.HandlerTimeout, 30*time.Second)
+	}
+
 	if cfg.Firebase.Enabled {
 		t.Fatal("Firebase.Enabled = true, want false by default")
 	}
@@ -55,6 +59,10 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 
 	if cfg.Worker.LeaseTimeout != 30*time.Second {
 		t.Fatalf("Worker.LeaseTimeout = %v, want %v", cfg.Worker.LeaseTimeout, 30*time.Second)
+	}
+
+	if cfg.Worker.NotificationRetention != 720*time.Hour {
+		t.Fatalf("Worker.NotificationRetention = %v, want %v", cfg.Worker.NotificationRetention, 720*time.Hour)
 	}
 
 	if cfg.Database.ConnectionString() != "postgres://coralhub:coralhub@localhost:5433/coralhub?sslmode=disable" {

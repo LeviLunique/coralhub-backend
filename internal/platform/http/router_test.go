@@ -2,6 +2,7 @@ package platformhttp
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,11 +18,12 @@ import (
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 )
 
 func TestNewRouterHealthEndpoints(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, nil, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil)
 
 	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -35,6 +37,23 @@ func TestNewRouterHealthEndpoints(t *testing.T) {
 	}
 }
 
+func TestNewRouterMetricsEndpoint(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("metrics returned %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if !strings.Contains(recorder.Body.String(), "coralhub_http_requests_total") {
+		t.Fatalf("metrics body missing http counter: %s", recorder.Body.String())
+	}
+}
+
 func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := tenants.NewService(&tenantStubRepository{
@@ -43,7 +62,7 @@ func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 			DisplayName: "Coral Jovem Asa Norte",
 		},
 	})
-	router := NewRouter(logger, service, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, service, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/tenants/coral-jovem-asa-norte", nil)
 	recorder := httptest.NewRecorder()
@@ -81,7 +100,7 @@ func TestNewRouterChoirCreateEndpointRequiresActorContext(t *testing.T) {
 			Active:   true,
 		},
 	})
-	router := NewRouter(logger, tenantService, choirService, userService, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, tenantService, choirService, userService, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs", strings.NewReader(`{"name":"Sopranos"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -108,7 +127,7 @@ func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 	userService := moduleusers.NewService(&userStubRepository{
 		users: []moduleusers.User{{ID: "user-1", Email: "ana@example.com", FullName: "Ana Clara", Active: true}},
 	})
-	router := NewRouter(logger, tenantService, nil, userService, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	recorder := httptest.NewRecorder()
@@ -117,6 +136,17 @@ func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("user list returned %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	var payload platformweb.ErrorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if payload.Error.Code != "tenant_header_required" {
+		t.Fatalf("payload.Error.Code = %q, want %q", payload.Error.Code, "tenant_header_required")
+	}
+	if payload.Error.RequestID == "" {
+		t.Fatal("payload.Error.RequestID is empty")
 	}
 }
 
@@ -131,7 +161,7 @@ func TestNewRouterMembershipListEndpointRequiresActorHeader(t *testing.T) {
 	})
 	userService := moduleusers.NewService(&userStubRepository{})
 	membershipService := memberships.NewService(&membershipStubRepository{})
-	router := NewRouter(logger, tenantService, nil, userService, membershipService, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, membershipService, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/choirs/choir-1/memberships", nil)
 	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
@@ -176,7 +206,7 @@ func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T
 	}, &membershipStubRepository{
 		membership: memberships.Membership{Role: memberships.RoleManager},
 	})
-	router := NewRouter(logger, tenantService, nil, userService, membershipService, voiceKitService, nil, nil)
+	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, membershipService, voiceKitService, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/voice-kits", strings.NewReader(`{"name":"Warmups"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -226,7 +256,7 @@ func TestNewRouterEventCreateEndpointRequiresManagerActorContext(t *testing.T) {
 			Active:    true,
 		},
 	}, membershipRepository)
-	router := NewRouter(logger, tenantService, nil, userService, nil, nil, nil, eventService)
+	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, nil, nil, nil, eventService)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/events", strings.NewReader(`{"title":"Main rehearsal","event_type":"rehearsal","start_at":"2026-04-20T19:00:00Z"}`))
 	req.Header.Set("Content-Type", "application/json")

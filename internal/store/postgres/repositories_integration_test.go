@@ -783,6 +783,103 @@ func TestNotificationRepositoryClaimAndStateTransitionsIntegration(t *testing.T)
 	}
 }
 
+func TestNotificationRepositoryCleanupTerminalBeforeIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempScheduledNotificationsTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	tenantUUID, err := parseUUID(tenant.ID)
+	if err != nil {
+		t.Fatalf("parseUUID(tenant.ID) error = %v", err)
+	}
+
+	eventID := mustParseUUID(t, "8f01f767-68e5-4e99-9cc6-6dfe0fdfd1d7")
+	userID := mustParseUUID(t, "4fbc4fb2-cdbe-45d8-a91b-f48862b68ebf")
+
+	oldSent, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "day_before",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 20, 18, 0, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() oldSent error = %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE scheduled_notifications
+		SET status = 'sent',
+			updated_at = $2
+		WHERE id = $1
+	`, oldSent.ID, time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("updating old sent notification: %v", err)
+	}
+
+	recentSent, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "hour_before",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() recentSent error = %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE scheduled_notifications
+		SET status = 'sent',
+			updated_at = $2
+		WHERE id = $1
+	`, recentSent.ID, time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("updating recent sent notification: %v", err)
+	}
+
+	pendingRow, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "pending_keep",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 26, 19, 0, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() pendingRow error = %v", err)
+	}
+
+	repository := NewNotificationRepository(tx, queries)
+	deleted, err := repository.CleanupTerminalBefore(ctx, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("CleanupTerminalBefore() error = %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+
+	rows, err := queries.ListScheduledNotificationsByEventID(ctx, sqlc.ListScheduledNotificationsByEventIDParams{
+		TenantID: tenantUUID,
+		EventID:  eventID,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledNotificationsByEventID() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	}
+
+	kept := map[string]bool{}
+	for _, row := range rows {
+		kept[uuidString(row.ID)] = true
+	}
+	if !kept[uuidString(recentSent.ID)] {
+		t.Fatalf("recent sent notification %q was removed unexpectedly", uuidString(recentSent.ID))
+	}
+	if !kept[uuidString(pendingRow.ID)] {
+		t.Fatalf("pending notification %q was removed unexpectedly", uuidString(pendingRow.ID))
+	}
+}
+
 func TestAuditRepositoryCreateAndListByTenantIDIntegration(t *testing.T) {
 	ctx, queries, tx := openIntegrationTestQueries(t)
 	createTempAuditLogTable(t, ctx, tx)

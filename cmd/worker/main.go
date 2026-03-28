@@ -63,6 +63,7 @@ func main() {
 		cfg.Worker.PollInterval,
 		cfg.Worker.BatchSize,
 		cfg.Worker.LeaseTimeout,
+		cfg.Worker.NotificationRetention,
 	)
 
 	logger.Info(
@@ -73,6 +74,8 @@ func main() {
 		cfg.Worker.BatchSize,
 		"max_attempts",
 		cfg.Worker.MaxAttempts,
+		"notification_retention",
+		cfg.Worker.NotificationRetention.String(),
 		"env",
 		cfg.AppEnv,
 	)

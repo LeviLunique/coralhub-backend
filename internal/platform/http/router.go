@@ -12,12 +12,15 @@ import (
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
+	platformobservability "github.com/LeviLunique/coralhub-backend/internal/platform/observability"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func NewRouter(
 	logger *slog.Logger,
+	handlerTimeout time.Duration,
 	tenantService *tenants.Service,
 	choirService *choirs.Service,
 	userService *moduleusers.Service,
@@ -31,19 +34,20 @@ func NewRouter(
 	router.Use(chimiddleware.RequestID)
 	router.Use(chimiddleware.RealIP)
 	router.Use(chimiddleware.Recoverer)
-	router.Use(chimiddleware.Timeout(30 * time.Second))
+	router.Use(Timeout(handlerTimeout))
 	router.Use(RequestLogger(logger))
 
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		WriteJSON(w, http.StatusOK, map[string]string{
+		platformweb.WriteJSON(w, http.StatusOK, map[string]string{
 			"service": "coralhub-api",
 			"status":  "ok",
 		})
 	})
+	router.Handle("/metrics", platformobservability.DefaultMetrics().Handler())
 
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-			WriteJSON(w, http.StatusOK, map[string]string{
+			platformweb.WriteJSON(w, http.StatusOK, map[string]string{
 				"service": "coralhub-api",
 				"status":  "ok",
 			})

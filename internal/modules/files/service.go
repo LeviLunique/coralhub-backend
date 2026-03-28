@@ -12,6 +12,7 @@ import (
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
+	platformobservability "github.com/LeviLunique/coralhub-backend/internal/platform/observability"
 )
 
 var (
@@ -141,6 +142,7 @@ func (s *Service) Upload(ctx context.Context, tenantID string, tenantSlug string
 	storageKey := buildStorageKey(s.appEnv, normalizedTenantSlug, voiceKit.ChoirID, normalizedVoiceKitID, fileID, storedFilename)
 
 	if err := s.storage.PutObject(ctx, storageKey, input.Content, input.SizeBytes, contentType); err != nil {
+		platformobservability.DefaultMetrics().IncrementStorageUploadFailure()
 		return File{}, ErrStorageUnavailable
 	}
 

@@ -72,3 +72,8 @@ WHERE tenant_id = $1
 	AND id = $2
 	AND status = 'processing'
 	AND processing_started_at = $3;
+
+-- name: DeleteExpiredScheduledNotifications :execrows
+DELETE FROM scheduled_notifications
+WHERE status IN ('sent', 'failed', 'canceled', 'invalid_token')
+	AND updated_at < $1;
