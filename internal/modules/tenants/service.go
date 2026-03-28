@@ -32,3 +32,17 @@ func (s *Service) GetBootstrap(ctx context.Context, slug string) (Bootstrap, err
 
 	return tenant, nil
 }
+
+func (s *Service) ResolveContext(ctx context.Context, slug string) (Context, error) {
+	normalizedSlug := strings.TrimSpace(slug)
+	if normalizedSlug == "" {
+		return Context{}, ErrInvalidTenantSlug
+	}
+
+	tenant, err := s.repository.GetContextBySlug(ctx, normalizedSlug)
+	if err != nil {
+		return Context{}, err
+	}
+
+	return tenant, nil
+}

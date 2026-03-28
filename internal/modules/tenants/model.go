@@ -6,6 +6,12 @@ type Bootstrap struct {
 	Branding    Branding
 }
 
+type Context struct {
+	ID          string
+	Slug        string
+	DisplayName string
+}
+
 type Branding struct {
 	LogoURL        *string
 	PrimaryColor   *string

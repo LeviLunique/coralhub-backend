@@ -38,3 +38,20 @@ func (r *TenantRepository) GetBootstrapBySlug(ctx context.Context, slug string) 
 		},
 	}, nil
 }
+
+func (r *TenantRepository) GetContextBySlug(ctx context.Context, slug string) (tenants.Context, error) {
+	row, err := r.queries.GetTenantBySlug(ctx, slug)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return tenants.Context{}, tenants.ErrTenantNotFound
+		}
+
+		return tenants.Context{}, err
+	}
+
+	return tenants.Context{
+		ID:          uuidString(row.ID),
+		Slug:        row.Slug,
+		DisplayName: row.DisplayName,
+	}, nil
+}
