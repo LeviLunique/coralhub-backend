@@ -18,6 +18,17 @@ type Choir struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ChoirMember struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ChoirID   pgtype.UUID        `json:"choir_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Role      string             `json:"role"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Tenant struct {
 	ID          pgtype.UUID        `json:"id"`
 	Slug        string             `json:"slug"`

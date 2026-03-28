@@ -79,6 +79,33 @@ func (r *UserRepository) GetByID(ctx context.Context, tenantID string, userID st
 	}, nil
 }
 
+func (r *UserRepository) GetByEmail(ctx context.Context, tenantID string, email string) (moduleusers.User, error) {
+	tenantUUID, err := parseUUID(tenantID)
+	if err != nil {
+		return moduleusers.User{}, moduleusers.ErrInvalidTenantID
+	}
+
+	row, err := r.queries.GetUserByEmail(ctx, sqlc.GetUserByEmailParams{
+		TenantID: tenantUUID,
+		Email:    email,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return moduleusers.User{}, moduleusers.ErrUserNotFound
+		}
+
+		return moduleusers.User{}, err
+	}
+
+	return moduleusers.User{
+		ID:       uuidString(row.ID),
+		TenantID: uuidString(row.TenantID),
+		Email:    row.Email,
+		FullName: row.FullName,
+		Active:   row.Active,
+	}, nil
+}
+
 func (r *UserRepository) ListByTenantID(ctx context.Context, tenantID string) ([]moduleusers.User, error) {
 	tenantUUID, err := parseUUID(tenantID)
 	if err != nil {

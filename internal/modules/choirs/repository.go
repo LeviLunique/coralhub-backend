@@ -4,11 +4,12 @@ import "context"
 
 type Repository interface {
 	Create(ctx context.Context, params CreateParams) (Choir, error)
-	GetByID(ctx context.Context, tenantID string, choirID string) (Choir, error)
-	ListByTenantID(ctx context.Context, tenantID string) ([]Choir, error)
+	GetByIDForMember(ctx context.Context, tenantID string, choirID string, userID string) (Choir, error)
+	ListByMemberUserID(ctx context.Context, tenantID string, userID string) ([]Choir, error)
 }
 
 type CreateParams struct {
+	ActorUserID string
 	TenantID    string
 	Name        string
 	Description *string

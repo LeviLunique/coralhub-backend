@@ -5,21 +5,35 @@ import (
 	"testing"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
 )
 
-func TestChoirRepositoryCreateAndListByTenantIDIntegration(t *testing.T) {
+func TestChoirRepositoryCreateAndListByMemberUserIDIntegration(t *testing.T) {
 	ctx, queries, tx := openIntegrationTestQueries(t)
 	createTempChoirsTable(t, ctx, tx)
+	createTempUsersTable(t, ctx, tx)
+	createTempChoirMembersTable(t, ctx, tx)
 
 	tenant := getSeedTenant(t, ctx, queries)
-	repository := NewChoirRepository(queries)
+	userRepository := NewUserRepository(queries)
+	actor, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "ana@example.com",
+		FullName: "Ana Clara",
+	})
+	if err != nil {
+		t.Fatalf("Create actor user error = %v", err)
+	}
+
+	repository := NewChoirRepository(tx, queries)
 
 	description := "Main choir"
 	created, err := repository.Create(ctx, choirs.CreateParams{
+		ActorUserID: actor.ID,
 		TenantID:    tenant.ID,
 		Name:        "Sopranos",
 		Description: &description,
@@ -28,9 +42,9 @@ func TestChoirRepositoryCreateAndListByTenantIDIntegration(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	listed, err := repository.ListByTenantID(ctx, tenant.ID)
+	listed, err := repository.ListByMemberUserID(ctx, tenant.ID, actor.ID)
 	if err != nil {
-		t.Fatalf("ListByTenantID() error = %v", err)
+		t.Fatalf("ListByMemberUserID() error = %v", err)
 	}
 
 	if len(listed) != 1 {
@@ -69,6 +83,67 @@ func TestUserRepositoryCreateAndListByTenantIDIntegration(t *testing.T) {
 
 	if listed[0].ID != created.ID {
 		t.Fatalf("listed[0].ID = %q, want %q", listed[0].ID, created.ID)
+	}
+}
+
+func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempChoirsTable(t, ctx, tx)
+	createTempUsersTable(t, ctx, tx)
+	createTempChoirMembersTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	userRepository := NewUserRepository(queries)
+	actor, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "manager@example.com",
+		FullName: "Manager",
+	})
+	if err != nil {
+		t.Fatalf("Create manager error = %v", err)
+	}
+
+	target, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "member@example.com",
+		FullName: "Member",
+	})
+	if err != nil {
+		t.Fatalf("Create member error = %v", err)
+	}
+
+	choirRepository := NewChoirRepository(tx, queries)
+	choir, err := choirRepository.Create(ctx, choirs.CreateParams{
+		ActorUserID: actor.ID,
+		TenantID:    tenant.ID,
+		Name:        "Altos",
+	})
+	if err != nil {
+		t.Fatalf("Create choir error = %v", err)
+	}
+
+	repository := NewMembershipRepository(queries)
+	created, err := repository.Create(ctx, memberships.CreateParams{
+		TenantID: tenant.ID,
+		ChoirID:  choir.ID,
+		UserID:   target.ID,
+		Role:     memberships.RoleMember,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	listed, err := repository.ListByChoirID(ctx, tenant.ID, choir.ID)
+	if err != nil {
+		t.Fatalf("ListByChoirID() error = %v", err)
+	}
+
+	if len(listed) != 2 {
+		t.Fatalf("len(listed) = %d, want 2", len(listed))
+	}
+
+	if created.UserID != target.ID {
+		t.Fatalf("created.UserID = %q, want %q", created.UserID, target.ID)
 	}
 }
 
@@ -147,5 +222,27 @@ func createTempUsersTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	`)
 	if err != nil {
 		t.Fatalf("creating temp users table: %v", err)
+	}
+}
+
+func createTempChoirMembersTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE choir_members (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			choir_id UUID NOT NULL,
+			user_id UUID NOT NULL,
+			role TEXT NOT NULL,
+			active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT choir_members_role_check CHECK (role IN ('manager', 'member')),
+			CONSTRAINT choir_members_tenant_choir_user_unique UNIQUE (tenant_id, choir_id, user_id)
+		) ON COMMIT DROP;
+	`)
+	if err != nil {
+		t.Fatalf("creating temp choir_members table: %v", err)
 	}
 }

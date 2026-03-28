@@ -22,7 +22,7 @@ func (s *stubRepository) Create(_ context.Context, params CreateParams) (Choir, 
 	return s.choir, nil
 }
 
-func (s *stubRepository) GetByID(_ context.Context, _, _ string) (Choir, error) {
+func (s *stubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (Choir, error) {
 	if s.err != nil {
 		return Choir{}, s.err
 	}
@@ -30,7 +30,7 @@ func (s *stubRepository) GetByID(_ context.Context, _, _ string) (Choir, error) 
 	return s.choir, nil
 }
 
-func (s *stubRepository) ListByTenantID(_ context.Context, _ string) ([]Choir, error) {
+func (s *stubRepository) ListByMemberUserID(_ context.Context, _, _ string) ([]Choir, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -46,7 +46,7 @@ func TestServiceCreateTrimsNameAndDescription(t *testing.T) {
 	service := NewService(repository)
 	description := "  Main choir  "
 
-	_, err := service.Create(context.Background(), "tenant-1", CreateInput{
+	_, err := service.Create(context.Background(), "tenant-1", "user-1", CreateInput{
 		Name:        "  Sopranos  ",
 		Description: &description,
 	})
@@ -66,7 +66,7 @@ func TestServiceCreateTrimsNameAndDescription(t *testing.T) {
 func TestServiceCreateRejectsBlankName(t *testing.T) {
 	service := NewService(&stubRepository{})
 
-	_, err := service.Create(context.Background(), "tenant-1", CreateInput{Name: "   "})
+	_, err := service.Create(context.Background(), "tenant-1", "user-1", CreateInput{Name: "   "})
 	if !errors.Is(err, ErrInvalidChoirName) {
 		t.Fatalf("Create() error = %v, want %v", err, ErrInvalidChoirName)
 	}

@@ -8,14 +8,22 @@ import (
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ChoirRepository struct {
+	db      txBeginner
 	queries *sqlc.Queries
 }
 
-func NewChoirRepository(queries *sqlc.Queries) *ChoirRepository {
-	return &ChoirRepository{queries: queries}
+type txBeginner interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
+var _ txBeginner = (*pgxpool.Pool)(nil)
+
+func NewChoirRepository(db txBeginner, queries *sqlc.Queries) *ChoirRepository {
+	return &ChoirRepository{db: db, queries: queries}
 }
 
 func (r *ChoirRepository) Create(ctx context.Context, params choirs.CreateParams) (choirs.Choir, error) {
@@ -24,7 +32,22 @@ func (r *ChoirRepository) Create(ctx context.Context, params choirs.CreateParams
 		return choirs.Choir{}, choirs.ErrInvalidTenantID
 	}
 
-	row, err := r.queries.CreateChoir(ctx, sqlc.CreateChoirParams{
+	actorUserID, err := parseUUID(params.ActorUserID)
+	if err != nil {
+		return choirs.Choir{}, choirs.ErrInvalidActorID
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return choirs.Choir{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	txQueries := r.queries.WithTx(tx)
+
+	row, err := txQueries.CreateChoir(ctx, sqlc.CreateChoirParams{
 		TenantID:    tenantID,
 		Name:        params.Name,
 		Description: textValue(params.Description),
@@ -38,6 +61,19 @@ func (r *ChoirRepository) Create(ctx context.Context, params choirs.CreateParams
 		return choirs.Choir{}, err
 	}
 
+	if _, err := txQueries.CreateChoirMember(ctx, sqlc.CreateChoirMemberParams{
+		TenantID: tenantID,
+		ChoirID:  row.ID,
+		UserID:   actorUserID,
+		Role:     "manager",
+	}); err != nil {
+		return choirs.Choir{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return choirs.Choir{}, err
+	}
+
 	return choirs.Choir{
 		ID:          uuidString(row.ID),
 		TenantID:    uuidString(row.TenantID),
@@ -47,7 +83,7 @@ func (r *ChoirRepository) Create(ctx context.Context, params choirs.CreateParams
 	}, nil
 }
 
-func (r *ChoirRepository) GetByID(ctx context.Context, tenantID string, choirID string) (choirs.Choir, error) {
+func (r *ChoirRepository) GetByIDForMember(ctx context.Context, tenantID string, choirID string, userID string) (choirs.Choir, error) {
 	tenantUUID, err := parseUUID(tenantID)
 	if err != nil {
 		return choirs.Choir{}, choirs.ErrInvalidTenantID
@@ -58,9 +94,15 @@ func (r *ChoirRepository) GetByID(ctx context.Context, tenantID string, choirID 
 		return choirs.Choir{}, choirs.ErrInvalidChoirID
 	}
 
-	row, err := r.queries.GetChoirByID(ctx, sqlc.GetChoirByIDParams{
+	userUUID, err := parseUUID(userID)
+	if err != nil {
+		return choirs.Choir{}, choirs.ErrInvalidActorID
+	}
+
+	row, err := r.queries.GetChoirByIDForMember(ctx, sqlc.GetChoirByIDForMemberParams{
 		TenantID: tenantUUID,
 		ID:       choirUUID,
+		UserID:   userUUID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -79,13 +121,21 @@ func (r *ChoirRepository) GetByID(ctx context.Context, tenantID string, choirID 
 	}, nil
 }
 
-func (r *ChoirRepository) ListByTenantID(ctx context.Context, tenantID string) ([]choirs.Choir, error) {
+func (r *ChoirRepository) ListByMemberUserID(ctx context.Context, tenantID string, userID string) ([]choirs.Choir, error) {
 	tenantUUID, err := parseUUID(tenantID)
 	if err != nil {
 		return nil, choirs.ErrInvalidTenantID
 	}
 
-	rows, err := r.queries.ListChoirsByTenantID(ctx, tenantUUID)
+	userUUID, err := parseUUID(userID)
+	if err != nil {
+		return nil, choirs.ErrInvalidActorID
+	}
+
+	rows, err := r.queries.ListChoirsByMemberUserID(ctx, sqlc.ListChoirsByMemberUserIDParams{
+		TenantID: tenantUUID,
+		UserID:   userUUID,
+	})
 	if err != nil {
 		return nil, err
 	}

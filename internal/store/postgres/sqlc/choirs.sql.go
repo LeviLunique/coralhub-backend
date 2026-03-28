@@ -66,6 +66,82 @@ func (q *Queries) GetChoirByID(ctx context.Context, arg GetChoirByIDParams) (Cho
 	return i, err
 }
 
+const getChoirByIDForMember = `-- name: GetChoirByIDForMember :one
+SELECT c.id, c.tenant_id, c.name, c.description, c.active, c.created_at, c.updated_at
+FROM choirs AS c
+INNER JOIN choir_members AS cm ON cm.choir_id = c.id
+WHERE c.tenant_id = $1
+  AND c.id = $2
+  AND cm.user_id = $3
+  AND c.active = TRUE
+  AND cm.active = TRUE
+`
+
+type GetChoirByIDForMemberParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	ID       pgtype.UUID `json:"id"`
+	UserID   pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetChoirByIDForMember(ctx context.Context, arg GetChoirByIDForMemberParams) (Choir, error) {
+	row := q.db.QueryRow(ctx, getChoirByIDForMember, arg.TenantID, arg.ID, arg.UserID)
+	var i Choir
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Description,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listChoirsByMemberUserID = `-- name: ListChoirsByMemberUserID :many
+SELECT c.id, c.tenant_id, c.name, c.description, c.active, c.created_at, c.updated_at
+FROM choirs AS c
+INNER JOIN choir_members AS cm ON cm.choir_id = c.id
+WHERE c.tenant_id = $1
+  AND cm.user_id = $2
+  AND c.active = TRUE
+  AND cm.active = TRUE
+ORDER BY c.name ASC
+`
+
+type ListChoirsByMemberUserIDParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	UserID   pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) ListChoirsByMemberUserID(ctx context.Context, arg ListChoirsByMemberUserIDParams) ([]Choir, error) {
+	rows, err := q.db.Query(ctx, listChoirsByMemberUserID, arg.TenantID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Choir
+	for rows.Next() {
+		var i Choir
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.Description,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChoirsByTenantID = `-- name: ListChoirsByTenantID :many
 SELECT id, tenant_id, name, description, active, created_at, updated_at
 FROM choirs
