@@ -11,6 +11,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getTenantBootstrapBySlug = `-- name: GetTenantBootstrapBySlug :one
+SELECT t.slug, t.display_name, tc.logo_url, tc.primary_color, tc.secondary_color, tc.custom_domain
+FROM tenants AS t
+LEFT JOIN tenant_configs AS tc ON tc.tenant_id = t.id
+WHERE t.slug = $1
+  AND t.active = TRUE
+`
+
+type GetTenantBootstrapBySlugRow struct {
+	Slug           string      `json:"slug"`
+	DisplayName    string      `json:"display_name"`
+	LogoUrl        pgtype.Text `json:"logo_url"`
+	PrimaryColor   pgtype.Text `json:"primary_color"`
+	SecondaryColor pgtype.Text `json:"secondary_color"`
+	CustomDomain   pgtype.Text `json:"custom_domain"`
+}
+
+func (q *Queries) GetTenantBootstrapBySlug(ctx context.Context, slug string) (GetTenantBootstrapBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getTenantBootstrapBySlug, slug)
+	var i GetTenantBootstrapBySlugRow
+	err := row.Scan(
+		&i.Slug,
+		&i.DisplayName,
+		&i.LogoUrl,
+		&i.PrimaryColor,
+		&i.SecondaryColor,
+		&i.CustomDomain,
+	)
+	return i, err
+}
+
 const getTenantByCustomDomain = `-- name: GetTenantByCustomDomain :one
 SELECT t.id, t.slug, t.display_name, t.active, t.created_at, t.updated_at
 FROM tenants AS t
