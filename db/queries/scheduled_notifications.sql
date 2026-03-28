@@ -1,7 +1,7 @@
 -- name: CreateScheduledNotification :one
 INSERT INTO scheduled_notifications (tenant_id, event_id, user_id, reminder_type, scheduled_for, status)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, created_at, updated_at;
+RETURNING id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, attempts, last_error, processing_started_at, sent_at, created_at, updated_at;
 
 -- name: CancelPendingScheduledNotificationsByEventID :execrows
 UPDATE scheduled_notifications
@@ -12,7 +12,7 @@ WHERE tenant_id = $1
   AND status = 'pending';
 
 -- name: ListScheduledNotificationsByEventID :many
-SELECT id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, created_at, updated_at
+SELECT id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, attempts, last_error, processing_started_at, sent_at, created_at, updated_at
 FROM scheduled_notifications
 WHERE tenant_id = $1
   AND event_id = $2

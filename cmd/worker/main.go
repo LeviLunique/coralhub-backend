@@ -5,11 +5,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/LeviLunique/coralhub-backend/internal/modules/notifications"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres"
+	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 )
 
 func main() {
@@ -33,18 +34,44 @@ func main() {
 	}
 	defer pool.Close()
 
-	logger.Info("worker starting", "poll_interval", cfg.Worker.PollInterval.String(), "env", cfg.AppEnv)
+	queries := sqlc.New(pool)
+	notificationRepository := postgres.NewNotificationRepository(queries)
+	notificationService := notifications.NewService(
+		notificationRepository,
+		noopSender{},
+		cfg.Worker.MaxAttempts,
+		cfg.Worker.RetryBackoff,
+	)
+	worker := notifications.NewWorker(
+		logger,
+		notificationService,
+		cfg.Worker.PollInterval,
+		cfg.Worker.BatchSize,
+		cfg.Worker.LeaseTimeout,
+	)
 
-	ticker := time.NewTicker(cfg.Worker.PollInterval)
-	defer ticker.Stop()
+	logger.Info(
+		"worker starting",
+		"poll_interval",
+		cfg.Worker.PollInterval.String(),
+		"batch_size",
+		cfg.Worker.BatchSize,
+		"max_attempts",
+		cfg.Worker.MaxAttempts,
+		"env",
+		cfg.AppEnv,
+	)
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("worker stopped")
-			return
-		case <-ticker.C:
-			logger.Debug("worker heartbeat")
-		}
+	if err := worker.Run(ctx); err != nil {
+		logger.Error("worker stopped unexpectedly", "error", err)
+		os.Exit(1)
 	}
+
+	logger.Info("worker stopped")
+}
+
+type noopSender struct{}
+
+func (noopSender) Deliver(_ context.Context, _ notifications.Notification) notifications.DeliveryResult {
+	return notifications.DeliveryResult{Kind: notifications.DeliverySent}
 }

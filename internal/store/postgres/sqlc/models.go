@@ -58,15 +58,19 @@ type KitFile struct {
 }
 
 type ScheduledNotification struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	EventID      pgtype.UUID        `json:"event_id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	ReminderType string             `json:"reminder_type"`
-	ScheduledFor pgtype.Timestamptz `json:"scheduled_for"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID                  pgtype.UUID        `json:"id"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	EventID             pgtype.UUID        `json:"event_id"`
+	UserID              pgtype.UUID        `json:"user_id"`
+	ReminderType        string             `json:"reminder_type"`
+	ScheduledFor        pgtype.Timestamptz `json:"scheduled_for"`
+	Status              string             `json:"status"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	Attempts            int32              `json:"attempts"`
+	LastError           pgtype.Text        `json:"last_error"`
+	ProcessingStartedAt pgtype.Timestamptz `json:"processing_started_at"`
+	SentAt              pgtype.Timestamptz `json:"sent_at"`
 }
 
 type Tenant struct {

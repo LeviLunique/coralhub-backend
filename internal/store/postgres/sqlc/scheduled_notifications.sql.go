@@ -36,7 +36,7 @@ func (q *Queries) CancelPendingScheduledNotificationsByEventID(ctx context.Conte
 const createScheduledNotification = `-- name: CreateScheduledNotification :one
 INSERT INTO scheduled_notifications (tenant_id, event_id, user_id, reminder_type, scheduled_for, status)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, created_at, updated_at
+RETURNING id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, attempts, last_error, processing_started_at, sent_at, created_at, updated_at
 `
 
 type CreateScheduledNotificationParams struct {
@@ -48,7 +48,23 @@ type CreateScheduledNotificationParams struct {
 	Status       string             `json:"status"`
 }
 
-func (q *Queries) CreateScheduledNotification(ctx context.Context, arg CreateScheduledNotificationParams) (ScheduledNotification, error) {
+type CreateScheduledNotificationRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	EventID             pgtype.UUID        `json:"event_id"`
+	UserID              pgtype.UUID        `json:"user_id"`
+	ReminderType        string             `json:"reminder_type"`
+	ScheduledFor        pgtype.Timestamptz `json:"scheduled_for"`
+	Status              string             `json:"status"`
+	Attempts            int32              `json:"attempts"`
+	LastError           pgtype.Text        `json:"last_error"`
+	ProcessingStartedAt pgtype.Timestamptz `json:"processing_started_at"`
+	SentAt              pgtype.Timestamptz `json:"sent_at"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateScheduledNotification(ctx context.Context, arg CreateScheduledNotificationParams) (CreateScheduledNotificationRow, error) {
 	row := q.db.QueryRow(ctx, createScheduledNotification,
 		arg.TenantID,
 		arg.EventID,
@@ -57,7 +73,7 @@ func (q *Queries) CreateScheduledNotification(ctx context.Context, arg CreateSch
 		arg.ScheduledFor,
 		arg.Status,
 	)
-	var i ScheduledNotification
+	var i CreateScheduledNotificationRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -66,6 +82,10 @@ func (q *Queries) CreateScheduledNotification(ctx context.Context, arg CreateSch
 		&i.ReminderType,
 		&i.ScheduledFor,
 		&i.Status,
+		&i.Attempts,
+		&i.LastError,
+		&i.ProcessingStartedAt,
+		&i.SentAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -73,7 +93,7 @@ func (q *Queries) CreateScheduledNotification(ctx context.Context, arg CreateSch
 }
 
 const listScheduledNotificationsByEventID = `-- name: ListScheduledNotificationsByEventID :many
-SELECT id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, created_at, updated_at
+SELECT id, tenant_id, event_id, user_id, reminder_type, scheduled_for, status, attempts, last_error, processing_started_at, sent_at, created_at, updated_at
 FROM scheduled_notifications
 WHERE tenant_id = $1
   AND event_id = $2
@@ -85,15 +105,31 @@ type ListScheduledNotificationsByEventIDParams struct {
 	EventID  pgtype.UUID `json:"event_id"`
 }
 
-func (q *Queries) ListScheduledNotificationsByEventID(ctx context.Context, arg ListScheduledNotificationsByEventIDParams) ([]ScheduledNotification, error) {
+type ListScheduledNotificationsByEventIDRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	EventID             pgtype.UUID        `json:"event_id"`
+	UserID              pgtype.UUID        `json:"user_id"`
+	ReminderType        string             `json:"reminder_type"`
+	ScheduledFor        pgtype.Timestamptz `json:"scheduled_for"`
+	Status              string             `json:"status"`
+	Attempts            int32              `json:"attempts"`
+	LastError           pgtype.Text        `json:"last_error"`
+	ProcessingStartedAt pgtype.Timestamptz `json:"processing_started_at"`
+	SentAt              pgtype.Timestamptz `json:"sent_at"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListScheduledNotificationsByEventID(ctx context.Context, arg ListScheduledNotificationsByEventIDParams) ([]ListScheduledNotificationsByEventIDRow, error) {
 	rows, err := q.db.Query(ctx, listScheduledNotificationsByEventID, arg.TenantID, arg.EventID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ScheduledNotification
+	var items []ListScheduledNotificationsByEventIDRow
 	for rows.Next() {
-		var i ScheduledNotification
+		var i ListScheduledNotificationsByEventIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TenantID,
@@ -102,6 +138,10 @@ func (q *Queries) ListScheduledNotificationsByEventID(ctx context.Context, arg L
 			&i.ReminderType,
 			&i.ScheduledFor,
 			&i.Status,
+			&i.Attempts,
+			&i.LastError,
+			&i.ProcessingStartedAt,
+			&i.SentAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

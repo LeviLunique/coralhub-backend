@@ -33,6 +33,22 @@ func TestLoadFromEnvUsesDefaults(t *testing.T) {
 		t.Fatalf("Worker.PollInterval = %v, want %v", cfg.Worker.PollInterval, 5*time.Second)
 	}
 
+	if cfg.Worker.BatchSize != 10 {
+		t.Fatalf("Worker.BatchSize = %d, want %d", cfg.Worker.BatchSize, 10)
+	}
+
+	if cfg.Worker.MaxAttempts != 3 {
+		t.Fatalf("Worker.MaxAttempts = %d, want %d", cfg.Worker.MaxAttempts, 3)
+	}
+
+	if cfg.Worker.RetryBackoff != time.Minute {
+		t.Fatalf("Worker.RetryBackoff = %v, want %v", cfg.Worker.RetryBackoff, time.Minute)
+	}
+
+	if cfg.Worker.LeaseTimeout != 30*time.Second {
+		t.Fatalf("Worker.LeaseTimeout = %v, want %v", cfg.Worker.LeaseTimeout, 30*time.Second)
+	}
+
 	if cfg.Database.ConnectionString() != "postgres://coralhub:coralhub@localhost:5433/coralhub?sslmode=disable" {
 		t.Fatalf("Database.ConnectionString() = %q", cfg.Database.ConnectionString())
 	}
