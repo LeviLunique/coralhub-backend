@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -147,6 +150,155 @@ func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
 	}
 }
 
+func TestVoiceKitRepositoryCreateGetListAndDeleteIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempChoirsTable(t, ctx, tx)
+	createTempUsersTable(t, ctx, tx)
+	createTempChoirMembersTable(t, ctx, tx)
+	createTempVoiceKitsTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	userRepository := NewUserRepository(queries)
+	actor, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "manager@example.com",
+		FullName: "Manager",
+	})
+	if err != nil {
+		t.Fatalf("Create actor user error = %v", err)
+	}
+
+	choirRepository := NewChoirRepository(tx, queries)
+	choir, err := choirRepository.Create(ctx, choirs.CreateParams{
+		ActorUserID: actor.ID,
+		TenantID:    tenant.ID,
+		Name:        "Altos",
+	})
+	if err != nil {
+		t.Fatalf("Create choir error = %v", err)
+	}
+
+	repository := NewVoiceKitRepository(queries)
+	description := "Warmup tracks"
+	created, err := repository.Create(ctx, voicekits.CreateParams{
+		TenantID:    tenant.ID,
+		ChoirID:     choir.ID,
+		Name:        "Warmups",
+		Description: &description,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := repository.GetByIDForMember(ctx, tenant.ID, created.ID, actor.ID)
+	if err != nil {
+		t.Fatalf("GetByIDForMember() error = %v", err)
+	}
+
+	if got.ID != created.ID {
+		t.Fatalf("got.ID = %q, want %q", got.ID, created.ID)
+	}
+
+	listed, err := repository.ListByChoirID(ctx, tenant.ID, choir.ID)
+	if err != nil {
+		t.Fatalf("ListByChoirID() error = %v", err)
+	}
+
+	if len(listed) != 1 {
+		t.Fatalf("len(listed) = %d, want 1", len(listed))
+	}
+
+	if err := repository.Delete(ctx, tenant.ID, created.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	_, err = repository.GetByIDForMember(ctx, tenant.ID, created.ID, actor.ID)
+	if !errors.Is(err, voicekits.ErrVoiceKitNotFound) {
+		t.Fatalf("GetByIDForMember() after delete error = %v, want %v", err, voicekits.ErrVoiceKitNotFound)
+	}
+}
+
+func TestFileRepositoryCreateListAndDeleteIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempChoirsTable(t, ctx, tx)
+	createTempUsersTable(t, ctx, tx)
+	createTempChoirMembersTable(t, ctx, tx)
+	createTempVoiceKitsTable(t, ctx, tx)
+	createTempKitFilesTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	userRepository := NewUserRepository(queries)
+	actor, err := userRepository.Create(ctx, moduleusers.CreateParams{
+		TenantID: tenant.ID,
+		Email:    "manager@example.com",
+		FullName: "Manager",
+	})
+	if err != nil {
+		t.Fatalf("Create actor user error = %v", err)
+	}
+
+	choirRepository := NewChoirRepository(tx, queries)
+	choir, err := choirRepository.Create(ctx, choirs.CreateParams{
+		ActorUserID: actor.ID,
+		TenantID:    tenant.ID,
+		Name:        "Altos",
+	})
+	if err != nil {
+		t.Fatalf("Create choir error = %v", err)
+	}
+
+	voiceKitRepository := NewVoiceKitRepository(queries)
+	voiceKit, err := voiceKitRepository.Create(ctx, voicekits.CreateParams{
+		TenantID: tenant.ID,
+		ChoirID:  choir.ID,
+		Name:     "Warmups",
+	})
+	if err != nil {
+		t.Fatalf("Create voice kit error = %v", err)
+	}
+
+	repository := NewFileRepository(queries)
+	created, err := repository.Create(ctx, modulefiles.CreateParams{
+		TenantID:         tenant.ID,
+		VoiceKitID:       voiceKit.ID,
+		OriginalFilename: "score.pdf",
+		StoredFilename:   "stored-score.pdf",
+		ContentType:      "application/pdf",
+		SizeBytes:        128,
+		StorageKey:       "dev/tenants/coral-jovem-asa-norte/choirs/" + choir.ID + "/voice-kits/" + voiceKit.ID + "/files/file-1/stored-score.pdf",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := repository.GetByIDForMember(ctx, tenant.ID, created.ID, actor.ID)
+	if err != nil {
+		t.Fatalf("GetByIDForMember() error = %v", err)
+	}
+
+	if got.ID != created.ID {
+		t.Fatalf("got.ID = %q, want %q", got.ID, created.ID)
+	}
+
+	listed, err := repository.ListByVoiceKitID(ctx, tenant.ID, voiceKit.ID)
+	if err != nil {
+		t.Fatalf("ListByVoiceKitID() error = %v", err)
+	}
+
+	if len(listed) != 1 {
+		t.Fatalf("len(listed) = %d, want 1", len(listed))
+	}
+
+	if err := repository.Delete(ctx, tenant.ID, created.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	_, err = repository.GetByIDForMember(ctx, tenant.ID, created.ID, actor.ID)
+	if !errors.Is(err, modulefiles.ErrFileNotFound) {
+		t.Fatalf("GetByIDForMember() after delete error = %v, want %v", err, modulefiles.ErrFileNotFound)
+	}
+}
+
 func openIntegrationTestQueries(t *testing.T) (context.Context, *sqlc.Queries, pgx.Tx) {
 	t.Helper()
 
@@ -244,5 +396,50 @@ func createTempChoirMembersTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	`)
 	if err != nil {
 		t.Fatalf("creating temp choir_members table: %v", err)
+	}
+}
+
+func createTempVoiceKitsTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE voice_kits (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			choir_id UUID NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT,
+			active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT voice_kits_tenant_choir_name_unique UNIQUE (tenant_id, choir_id, name)
+		) ON COMMIT DROP;
+	`)
+	if err != nil {
+		t.Fatalf("creating temp voice_kits table: %v", err)
+	}
+}
+
+func createTempKitFilesTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE kit_files (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			voice_kit_id UUID NOT NULL,
+			original_filename TEXT NOT NULL,
+			stored_filename TEXT NOT NULL,
+			content_type TEXT NOT NULL,
+			size_bytes BIGINT NOT NULL,
+			storage_key TEXT NOT NULL,
+			active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT kit_files_size_bytes_positive CHECK (size_bytes > 0)
+		) ON COMMIT DROP;
+	`)
+	if err != nil {
+		t.Fatalf("creating temp kit_files table: %v", err)
 	}
 }

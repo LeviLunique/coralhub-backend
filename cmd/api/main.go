@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformhttp "github.com/LeviLunique/coralhub-backend/internal/platform/http"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
@@ -50,10 +52,14 @@ func main() {
 	userService := moduleusers.NewService(userRepository)
 	membershipRepository := postgres.NewMembershipRepository(queries)
 	membershipService := memberships.NewService(membershipRepository)
+	voiceKitRepository := postgres.NewVoiceKitRepository(queries)
+	voiceKitService := voicekits.NewService(voiceKitRepository, membershipRepository)
+	fileRepository := postgres.NewFileRepository(queries)
+	fileService := modulefiles.NewService(fileRepository, voiceKitRepository, membershipRepository)
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService, membershipService),
+		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService, membershipService, voiceKitService, fileService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
