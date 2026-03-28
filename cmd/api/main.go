@@ -52,7 +52,7 @@ func main() {
 	choirService := choirs.NewService(choirRepository)
 	userRepository := postgres.NewUserRepository(queries)
 	userService := moduleusers.NewService(userRepository)
-	membershipRepository := postgres.NewMembershipRepository(queries)
+	membershipRepository := postgres.NewMembershipRepository(pool, queries)
 	membershipService := memberships.NewService(membershipRepository)
 	voiceKitRepository := postgres.NewVoiceKitRepository(queries)
 	voiceKitService := voicekits.NewService(voiceKitRepository, membershipRepository)

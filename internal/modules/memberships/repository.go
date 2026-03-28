@@ -9,8 +9,9 @@ type Repository interface {
 }
 
 type CreateParams struct {
-	TenantID string
-	ChoirID  string
-	UserID   string
-	Role     string
+	TenantID    string
+	ChoirID     string
+	UserID      string
+	Role        string
+	ActorUserID string
 }

@@ -70,4 +70,8 @@ func TestServiceAddMemberNormalizesRole(t *testing.T) {
 	if repository.create.Role != RoleMember {
 		t.Fatalf("repository.create.Role = %q", repository.create.Role)
 	}
+
+	if repository.create.ActorUserID != "actor-1" {
+		t.Fatalf("repository.create.ActorUserID = %q", repository.create.ActorUserID)
+	}
 }
