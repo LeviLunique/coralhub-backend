@@ -10,6 +10,7 @@ import (
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/notifications"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
@@ -467,6 +468,189 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 	}
 }
 
+func TestNotificationRepositoryClaimAndStateTransitionsIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempScheduledNotificationsTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	tenantUUID, err := parseUUID(tenant.ID)
+	if err != nil {
+		t.Fatalf("parseUUID(tenant.ID) error = %v", err)
+	}
+
+	eventID, err := parseUUID("8f01f767-68e5-4e99-9cc6-6dfe0fdfd1d7")
+	if err != nil {
+		t.Fatalf("parseUUID(eventID) error = %v", err)
+	}
+
+	userID, err := parseUUID("4fbc4fb2-cdbe-45d8-a91b-f48862b68ebf")
+	if err != nil {
+		t.Fatalf("parseUUID(userID) error = %v", err)
+	}
+
+	first, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "day_before",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 20, 18, 0, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() first error = %v", err)
+	}
+
+	second, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "hour_before",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() second error = %v", err)
+	}
+
+	third, err := queries.CreateScheduledNotification(ctx, sqlc.CreateScheduledNotificationParams{
+		TenantID:     tenantUUID,
+		EventID:      eventID,
+		UserID:       userID,
+		ReminderType: "custom_retry",
+		ScheduledFor: timestamptzValue(time.Date(2026, 4, 20, 19, 30, 0, 0, time.UTC)),
+		Status:       notifications.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CreateScheduledNotification() third error = %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE scheduled_notifications
+		SET status = 'processing',
+			processing_started_at = $2
+		WHERE id = $1
+	`, third.ID, time.Date(2026, 4, 20, 17, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("setting stale processing notification: %v", err)
+	}
+
+	repository := NewNotificationRepository(queries)
+	claimedAt := time.Date(2026, 4, 20, 20, 0, 0, 0, time.UTC)
+	claimed, err := repository.ClaimDue(ctx, notifications.ClaimParams{
+		ClaimedAt:   claimedAt,
+		StaleBefore: claimedAt.Add(-30 * time.Second),
+		Limit:       2,
+	})
+	if err != nil {
+		t.Fatalf("ClaimDue() error = %v", err)
+	}
+
+	if len(claimed) != 2 {
+		t.Fatalf("len(claimed) = %d, want 2", len(claimed))
+	}
+
+	if err := repository.MarkSent(ctx, notifications.FinalizeParams{
+		TenantID:            claimed[0].TenantID,
+		NotificationID:      claimed[0].ID,
+		ProcessingStartedAt: *claimed[0].ProcessingStartedAt,
+		At:                  claimedAt,
+	}); err != nil {
+		t.Fatalf("MarkSent() error = %v", err)
+	}
+
+	if err := repository.Retry(ctx, notifications.RetryParams{
+		TenantID:            claimed[1].TenantID,
+		NotificationID:      claimed[1].ID,
+		ProcessingStartedAt: *claimed[1].ProcessingStartedAt,
+		NextAttemptAt:       claimedAt.Add(time.Minute),
+		LastError:           "temporary failure",
+	}); err != nil {
+		t.Fatalf("Retry() error = %v", err)
+	}
+
+	claimed, err = repository.ClaimDue(ctx, notifications.ClaimParams{
+		ClaimedAt:   claimedAt.Add(2 * time.Minute),
+		StaleBefore: claimedAt.Add(90 * time.Second),
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("ClaimDue() second error = %v", err)
+	}
+	if len(claimed) != 2 {
+		t.Fatalf("len(claimed) second = %d, want 2", len(claimed))
+	}
+
+	claimedByID := map[string]notifications.Notification{}
+	for _, item := range claimed {
+		claimedByID[item.ID] = item
+	}
+
+	retriedNotification, ok := claimedByID[uuidString(second.ID)]
+	if !ok {
+		t.Fatalf("claimed notifications missing retried row %q", uuidString(second.ID))
+	}
+
+	staleNotification, ok := claimedByID[uuidString(third.ID)]
+	if !ok {
+		t.Fatalf("claimed notifications missing stale row %q", uuidString(third.ID))
+	}
+
+	if err := repository.MarkInvalidToken(ctx, notifications.FinalizeParams{
+		TenantID:            retriedNotification.TenantID,
+		NotificationID:      retriedNotification.ID,
+		ProcessingStartedAt: *retriedNotification.ProcessingStartedAt,
+		LastError:           "invalid token",
+	}); err != nil {
+		t.Fatalf("MarkInvalidToken() error = %v", err)
+	}
+
+	if err := repository.MarkFailed(ctx, notifications.FinalizeParams{
+		TenantID:            staleNotification.TenantID,
+		NotificationID:      staleNotification.ID,
+		ProcessingStartedAt: *staleNotification.ProcessingStartedAt,
+		LastError:           "max attempts reached",
+	}); err != nil {
+		t.Fatalf("MarkFailed() error = %v", err)
+	}
+
+	rows, err := queries.ListScheduledNotificationsByEventID(ctx, sqlc.ListScheduledNotificationsByEventIDParams{
+		TenantID: tenantUUID,
+		EventID:  eventID,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledNotificationsByEventID() error = %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3", len(rows))
+	}
+
+	statuses := map[string]string{}
+	attempts := map[string]int32{}
+	for _, row := range rows {
+		statuses[uuidString(row.ID)] = row.Status
+		attempts[uuidString(row.ID)] = row.Attempts
+	}
+
+	if statuses[uuidString(first.ID)] != notifications.StatusSent {
+		t.Fatalf("first status = %q, want %q", statuses[uuidString(first.ID)], notifications.StatusSent)
+	}
+	if attempts[uuidString(first.ID)] != 1 {
+		t.Fatalf("first attempts = %d, want 1", attempts[uuidString(first.ID)])
+	}
+	if statuses[uuidString(second.ID)] != notifications.StatusInvalidToken {
+		t.Fatalf("second status = %q, want %q", statuses[uuidString(second.ID)], notifications.StatusInvalidToken)
+	}
+	if attempts[uuidString(second.ID)] != 1 {
+		t.Fatalf("second attempts = %d, want 1", attempts[uuidString(second.ID)])
+	}
+	if statuses[uuidString(third.ID)] != notifications.StatusFailed {
+		t.Fatalf("third status = %q, want %q", statuses[uuidString(third.ID)], notifications.StatusFailed)
+	}
+	if attempts[uuidString(third.ID)] != 2 {
+		t.Fatalf("third attempts = %d, want 2", attempts[uuidString(third.ID)])
+	}
+}
+
 func openIntegrationTestQueries(t *testing.T) (context.Context, *sqlc.Queries, pgx.Tx) {
 	t.Helper()
 
@@ -648,10 +832,14 @@ func createTempScheduledNotificationsTable(t *testing.T, ctx context.Context, tx
 			reminder_type TEXT NOT NULL,
 			scheduled_for TIMESTAMPTZ NOT NULL,
 			status TEXT NOT NULL DEFAULT 'pending',
+			attempts INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT,
+			processing_started_at TIMESTAMPTZ,
+			sent_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			CONSTRAINT scheduled_notifications_reminder_type_check CHECK (reminder_type IN ('day_before', 'hour_before')),
-			CONSTRAINT scheduled_notifications_status_check CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'canceled'))
+			CONSTRAINT scheduled_notifications_status_check CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'canceled', 'invalid_token')),
+			CONSTRAINT scheduled_notifications_attempts_non_negative_check CHECK (attempts >= 0)
 		) ON COMMIT DROP;
 		CREATE UNIQUE INDEX scheduled_notifications_pending_identity_idx
 			ON scheduled_notifications (tenant_id, user_id, event_id, reminder_type)

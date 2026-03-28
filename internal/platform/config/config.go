@@ -44,6 +44,10 @@ type DatabaseConfig struct {
 
 type WorkerConfig struct {
 	PollInterval time.Duration
+	BatchSize    int32
+	MaxAttempts  int32
+	RetryBackoff time.Duration
+	LeaseTimeout time.Duration
 }
 
 type StorageConfig struct {
@@ -92,6 +96,10 @@ func loadFromEnv(lookup envLookup) (Config, error) {
 		},
 		Worker: WorkerConfig{
 			PollInterval: durationOrDefault(lookup, "WORKER_POLL_INTERVAL", 5*time.Second),
+			BatchSize:    int32OrDefault(lookup, "WORKER_BATCH_SIZE", 10),
+			MaxAttempts:  int32OrDefault(lookup, "WORKER_MAX_ATTEMPTS", 3),
+			RetryBackoff: durationOrDefault(lookup, "WORKER_RETRY_BACKOFF", time.Minute),
+			LeaseTimeout: durationOrDefault(lookup, "WORKER_LEASE_TIMEOUT", 30*time.Second),
 		},
 		Storage: StorageConfig{
 			Endpoint:  envOrDefault(lookup, "STORAGE_ENDPOINT", "localhost:9000"),
