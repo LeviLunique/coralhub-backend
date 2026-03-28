@@ -47,6 +47,20 @@ func (s *Service) Create(ctx context.Context, tenantID string, input CreateInput
 	})
 }
 
+func (s *Service) ResolveActorByEmail(ctx context.Context, tenantID string, email string) (User, error) {
+	normalizedTenantID := strings.TrimSpace(tenantID)
+	if normalizedTenantID == "" {
+		return User{}, ErrInvalidTenantID
+	}
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	if _, err := mail.ParseAddress(normalizedEmail); err != nil {
+		return User{}, ErrInvalidEmail
+	}
+
+	return s.repository.GetByEmail(ctx, normalizedTenantID, normalizedEmail)
+}
+
 func (s *Service) Get(ctx context.Context, tenantID string, userID string) (User, error) {
 	normalizedTenantID := strings.TrimSpace(tenantID)
 	if normalizedTenantID == "" {

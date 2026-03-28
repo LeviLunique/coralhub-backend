@@ -9,6 +9,7 @@ import (
 var (
 	ErrInvalidChoirName = errors.New("invalid choir name")
 	ErrInvalidChoirID   = errors.New("invalid choir id")
+	ErrInvalidActorID   = errors.New("invalid actor id")
 	ErrInvalidTenantID  = errors.New("invalid tenant id")
 	ErrChoirNotFound    = errors.New("choir not found")
 	ErrChoirNameTaken   = errors.New("choir name already exists")
@@ -22,10 +23,15 @@ func NewService(repository Repository) *Service {
 	return &Service{repository: repository}
 }
 
-func (s *Service) Create(ctx context.Context, tenantID string, input CreateInput) (Choir, error) {
+func (s *Service) Create(ctx context.Context, tenantID string, actorUserID string, input CreateInput) (Choir, error) {
 	normalizedTenantID := strings.TrimSpace(tenantID)
 	if normalizedTenantID == "" {
 		return Choir{}, ErrInvalidTenantID
+	}
+
+	normalizedActorUserID := strings.TrimSpace(actorUserID)
+	if normalizedActorUserID == "" {
+		return Choir{}, ErrInvalidActorID
 	}
 
 	normalizedName := strings.TrimSpace(input.Name)
@@ -34,16 +40,22 @@ func (s *Service) Create(ctx context.Context, tenantID string, input CreateInput
 	}
 
 	return s.repository.Create(ctx, CreateParams{
+		ActorUserID: normalizedActorUserID,
 		TenantID:    normalizedTenantID,
 		Name:        normalizedName,
 		Description: normalizeOptionalText(input.Description),
 	})
 }
 
-func (s *Service) Get(ctx context.Context, tenantID string, choirID string) (Choir, error) {
+func (s *Service) Get(ctx context.Context, tenantID string, actorUserID string, choirID string) (Choir, error) {
 	normalizedTenantID := strings.TrimSpace(tenantID)
 	if normalizedTenantID == "" {
 		return Choir{}, ErrInvalidTenantID
+	}
+
+	normalizedActorUserID := strings.TrimSpace(actorUserID)
+	if normalizedActorUserID == "" {
+		return Choir{}, ErrInvalidActorID
 	}
 
 	normalizedChoirID := strings.TrimSpace(choirID)
@@ -51,16 +63,21 @@ func (s *Service) Get(ctx context.Context, tenantID string, choirID string) (Cho
 		return Choir{}, ErrInvalidChoirID
 	}
 
-	return s.repository.GetByID(ctx, normalizedTenantID, normalizedChoirID)
+	return s.repository.GetByIDForMember(ctx, normalizedTenantID, normalizedChoirID, normalizedActorUserID)
 }
 
-func (s *Service) List(ctx context.Context, tenantID string) ([]Choir, error) {
+func (s *Service) List(ctx context.Context, tenantID string, actorUserID string) ([]Choir, error) {
 	normalizedTenantID := strings.TrimSpace(tenantID)
 	if normalizedTenantID == "" {
 		return nil, ErrInvalidTenantID
 	}
 
-	return s.repository.ListByTenantID(ctx, normalizedTenantID)
+	normalizedActorUserID := strings.TrimSpace(actorUserID)
+	if normalizedActorUserID == "" {
+		return nil, ErrInvalidActorID
+	}
+
+	return s.repository.ListByMemberUserID(ctx, normalizedTenantID, normalizedActorUserID)
 }
 
 func normalizeOptionalText(value *string) *string {

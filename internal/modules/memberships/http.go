@@ -1,4 +1,4 @@
-package choirs
+package memberships
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 )
 
 func RegisterRoutes(router chi.Router, service *Service) {
-	router.Route("/choirs", func(r chi.Router) {
+	router.Route("/choirs/{choirID}/memberships", func(r chi.Router) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
@@ -30,22 +30,28 @@ func RegisterRoutes(router chi.Router, service *Service) {
 				return
 			}
 
-			choir, err := service.Create(r.Context(), tenant.ID, actor.ID, input)
+			membership, err := service.AddMember(r.Context(), tenant.ID, chi.URLParam(r, "choirID"), actor.ID, input)
 			if err != nil {
 				switch {
-				case errors.Is(err, ErrInvalidChoirName):
-					writeError(w, http.StatusBadRequest, "choir name is required")
-				case errors.Is(err, ErrChoirNameTaken):
-					writeError(w, http.StatusConflict, "choir name already exists")
-				case errors.Is(err, ErrInvalidActorID):
-					writeError(w, http.StatusUnauthorized, "actor identity is required")
+				case errors.Is(err, ErrInvalidChoirID):
+					writeError(w, http.StatusBadRequest, "choir id is required")
+				case errors.Is(err, ErrInvalidUserID):
+					writeError(w, http.StatusBadRequest, "user id is required")
+				case errors.Is(err, ErrInvalidRole):
+					writeError(w, http.StatusBadRequest, "role must be manager or member")
+				case errors.Is(err, ErrForbidden):
+					writeError(w, http.StatusForbidden, "actor cannot manage this choir")
+				case errors.Is(err, ErrMembershipAlreadyExist):
+					writeError(w, http.StatusConflict, "membership already exists")
+				case errors.Is(err, ErrMembershipNotFound):
+					writeError(w, http.StatusForbidden, "actor is not a member of this choir")
 				default:
 					writeError(w, http.StatusInternalServerError, "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusCreated, choir)
+			writeJSON(w, http.StatusCreated, membership)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -61,44 +67,20 @@ func RegisterRoutes(router chi.Router, service *Service) {
 				return
 			}
 
-			items, err := service.List(r.Context(), tenant.ID, actor.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "internal server error")
-				return
-			}
-
-			writeJSON(w, http.StatusOK, map[string][]Choir{"items": items})
-		})
-
-		r.Get("/{choirID}", func(w http.ResponseWriter, r *http.Request) {
-			tenant, ok := requestctx.TenantFromContext(r.Context())
-			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
-				return
-			}
-
-			actor, ok := requestctx.ActorFromContext(r.Context())
-			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
-				return
-			}
-
-			choir, err := service.Get(r.Context(), tenant.ID, actor.ID, chi.URLParam(r, "choirID"))
+			items, err := service.ListByChoir(r.Context(), tenant.ID, chi.URLParam(r, "choirID"), actor.ID)
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidChoirID):
 					writeError(w, http.StatusBadRequest, "choir id is required")
-				case errors.Is(err, ErrInvalidActorID):
-					writeError(w, http.StatusUnauthorized, "actor identity is required")
-				case errors.Is(err, ErrChoirNotFound):
-					writeError(w, http.StatusNotFound, "choir not found")
+				case errors.Is(err, ErrMembershipNotFound):
+					writeError(w, http.StatusForbidden, "actor is not a member of this choir")
 				default:
 					writeError(w, http.StatusInternalServerError, "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, choir)
+			writeJSON(w, http.StatusOK, map[string][]Membership{"items": items})
 		})
 	})
 }

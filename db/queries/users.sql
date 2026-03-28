@@ -10,6 +10,13 @@ WHERE tenant_id = $1
   AND id = $2
   AND active = TRUE;
 
+-- name: GetUserByEmail :one
+SELECT id, tenant_id, email, full_name, active, created_at, updated_at
+FROM users
+WHERE tenant_id = $1
+  AND email = $2
+  AND active = TRUE;
+
 -- name: ListUsersByTenantID :many
 SELECT id, tenant_id, email, full_name, active, created_at, updated_at
 FROM users

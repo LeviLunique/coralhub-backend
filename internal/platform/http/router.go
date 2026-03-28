@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,7 @@ func NewRouter(
 	tenantService *tenants.Service,
 	choirService *choirs.Service,
 	userService *moduleusers.Service,
+	membershipService *memberships.Service,
 ) http.Handler {
 	router := chi.NewRouter()
 
@@ -47,16 +49,23 @@ func NewRouter(
 			}
 		})
 
-		if tenantService != nil {
+		if tenantService != nil && userService != nil {
 			r.Group(func(protected chi.Router) {
 				protected.Use(RequireTenantContext(tenantService))
+				moduleusers.RegisterRoutes(protected, userService)
+			})
+		}
+
+		if tenantService != nil && userService != nil && (choirService != nil || membershipService != nil) {
+			r.Group(func(protected chi.Router) {
+				protected.Use(RequireActorContext(tenantService, userService))
 
 				if choirService != nil {
 					choirs.RegisterRoutes(protected, choirService)
 				}
 
-				if userService != nil {
-					moduleusers.RegisterRoutes(protected, userService)
+				if membershipService != nil {
+					memberships.RegisterRoutes(protected, membershipService)
 				}
 			})
 		}
