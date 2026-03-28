@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	pushfcm "github.com/LeviLunique/coralhub-backend/internal/integrations/push/fcm"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/notifications"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
@@ -36,9 +37,23 @@ func main() {
 
 	queries := sqlc.New(pool)
 	notificationRepository := postgres.NewNotificationRepository(queries)
+	deviceRepository := postgres.NewDeviceRepository(queries)
+
+	sender := notifications.Sender(noopSender{})
+	if cfg.Firebase.Enabled {
+		fcmSender, err := pushfcm.New(ctx, cfg.Firebase, deviceRepository)
+		if err != nil {
+			logger.Error("failed to initialize fcm sender", "error", err)
+			os.Exit(1)
+		}
+		sender = fcmSender
+	} else {
+		logger.Warn("firebase disabled; using noop notification sender")
+	}
+
 	notificationService := notifications.NewService(
 		notificationRepository,
-		noopSender{},
+		sender,
 		cfg.Worker.MaxAttempts,
 		cfg.Worker.RetryBackoff,
 	)
