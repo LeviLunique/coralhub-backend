@@ -1,10 +1,25 @@
 # CoralHub Backend
 
-Backend for CoralHub, a multi-tenant choir management platform built as a pragmatic modular monolith in Go.
+CoralHub Backend is a multi-tenant choir management backend built in Go.
 
 The platform starts with `Coral Jovem Asa Norte` as the initial tenant seed. That tenant is data, not hardcoded product identity.
 
-The documentation entrypoint is [docs/INDEX.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/INDEX.md). A compact architecture overview lives in [docs/ARCHITECTURE_SUMMARY.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/ARCHITECTURE_SUMMARY.md).
+## Documentation
+
+The remote-friendly documentation entrypoint is [handbook/README.md](handbook/README.md).
+
+Recommended reading order:
+
+1. [handbook/README.md](handbook/README.md)
+2. [handbook/LOCAL_DEVELOPMENT.md](handbook/LOCAL_DEVELOPMENT.md)
+3. [handbook/TECHNICAL_OVERVIEW.md](handbook/TECHNICAL_OVERVIEW.md)
+4. [handbook/INFRASTRUCTURE.md](handbook/INFRASTRUCTURE.md)
+5. [handbook/FEATURES.md](handbook/FEATURES.md)
+
+Detailed decision records and implementation history remain in:
+
+- [`docs/adr/`](docs/adr/)
+- [`docs/features/`](docs/features/)
 
 ## Stack
 
@@ -13,20 +28,21 @@ The documentation entrypoint is [docs/INDEX.md](/Users/levilunique/Workspace/Go/
 - PostgreSQL
 - pgx
 - sqlc
-- MinIO for local S3-compatible storage
+- S3-compatible object storage
+- MinIO for local object storage
+- FCM for push notifications
 
 ## Quick Start
 
 1. Copy `.env.example` to `.env`.
-2. Start local dependencies with `make compose-up`.
-3. Follow [LOCAL_ENV_SETUP.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/LOCAL_ENV_SETUP.md) if you need to generate local secrets or align Docker credentials.
-4. Apply migrations with your preferred migration runner. The files use `golang-migrate` naming.
+2. Read [handbook/LOCAL_DEVELOPMENT.md](handbook/LOCAL_DEVELOPMENT.md).
+3. Start local dependencies with `make compose-up`.
+4. Apply database migrations with your preferred migration runner.
 5. Start the API with `make run-api`.
 6. Start the worker with `make run-worker`.
-7. Verify the stack with [LOCAL_SMOKE_TEST.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/LOCAL_SMOKE_TEST.md).
+7. Verify the service with `curl http://127.0.0.1:8080/healthz`.
 
-The local PostgreSQL container is exposed on host port `5433` to avoid collisions with existing PostgreSQL installations bound to `5432`.
-The app reads explicit DB settings from `.env`: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_SSL_MODE`.
+The local PostgreSQL container uses host port `5433` to avoid conflicts with local installations on `5432`.
 
 ## Useful Commands
 
@@ -42,38 +58,27 @@ The app reads explicit DB settings from `.env`: `DB_HOST`, `DB_PORT`, `DB_USER`,
 - `make ci`
 - `make compose-up`
 - `make compose-down`
+- `make run-api`
+- `make run-worker`
 
-## Repository Shape
+## Repository Structure
 
-The codebase follows the documented modular monolith structure:
+- `cmd/` contains the API and worker entrypoints.
+- `internal/modules/` contains business capabilities such as tenants, choirs, memberships, events, files, notifications, and audit history.
+- `internal/platform/` contains configuration, routing, observability, logging, and request context helpers.
+- `internal/store/postgres/` contains the concrete PostgreSQL implementations.
+- `internal/integrations/` contains external adapters such as S3-compatible storage and FCM.
+- `db/migrations/` and `db/queries/` contain the explicit SQL that defines and accesses the data model.
 
-- `cmd/` for process entrypoints
-- `internal/platform/` for cross-cutting bootstrap code
-- `internal/modules/` for business capabilities
-- `internal/store/postgres/` for concrete PostgreSQL wiring
-- `db/migrations/` and `db/queries/` for explicit SQL
+## Product Model
 
-## Architecture Summary
+CoralHub is a shared backend for multiple tenants.
 
-CoralHub backend is a pragmatic modular monolith with:
+Core rules:
 
-- `cmd/api` and `cmd/worker` as separate processes
-- business capabilities under `internal/modules`
-- explicit PostgreSQL queries under `db/queries`
-- `pgx + sqlc` for persistence
-- MinIO locally and S3-compatible storage in production
-- tenant-aware authorization and data ownership from day one
-
-The deeper architectural documents are:
-
-- [AI_IMPLEMENTATION_GUIDE.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/AI_IMPLEMENTATION_GUIDE.md)
-- [0001-architecture.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/adr/0001-architecture.md)
-- [0003-multi-tenant-data-model.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/adr/0003-multi-tenant-data-model.md)
-- [0004-auth-and-tenant-resolution.md](/Users/levilunique/Workspace/Go/coralhub-backend/docs/adr/0004-auth-and-tenant-resolution.md)
-
-## Initial Database Seed
-
-The first migration creates the tenant bootstrap tables and seeds:
-
-- slug: `coral-jovem-asa-norte`
-- display name: `Coral Jovem Asa Norte`
+- tenant-owned data carries `tenant_id`
+- authorization is tenant-aware
+- storage keys include tenant context
+- API and worker run as separate processes
+- SQL is explicit and first-class
+- the system does not use an ORM or generic repositories
