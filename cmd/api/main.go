@@ -9,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformhttp "github.com/LeviLunique/coralhub-backend/internal/platform/http"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres"
+	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 )
 
 func main() {
@@ -36,9 +38,13 @@ func main() {
 	}
 	defer pool.Close()
 
+	queries := sqlc.New(pool)
+	tenantRepository := postgres.NewTenantRepository(queries)
+	tenantService := tenants.NewService(tenantRepository)
+
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger),
+		Handler:           platformhttp.NewRouter(logger, tenantService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
