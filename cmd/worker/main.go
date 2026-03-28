@@ -36,7 +36,7 @@ func main() {
 	defer pool.Close()
 
 	queries := sqlc.New(pool)
-	notificationRepository := postgres.NewNotificationRepository(queries)
+	notificationRepository := postgres.NewNotificationRepository(pool, queries)
 	deviceRepository := postgres.NewDeviceRepository(queries)
 
 	sender := notifications.Sender(noopSender{})

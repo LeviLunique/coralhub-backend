@@ -4,16 +4,18 @@ import (
 	"context"
 	"time"
 
+	moduleaudit "github.com/LeviLunique/coralhub-backend/internal/modules/audit"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/notifications"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 )
 
 type NotificationRepository struct {
+	db      txBeginner
 	queries *sqlc.Queries
 }
 
-func NewNotificationRepository(queries *sqlc.Queries) *NotificationRepository {
-	return &NotificationRepository{queries: queries}
+func NewNotificationRepository(db txBeginner, queries *sqlc.Queries) *NotificationRepository {
+	return &NotificationRepository{db: db, queries: queries}
 }
 
 func (r *NotificationRepository) ClaimDue(ctx context.Context, params notifications.ClaimParams) ([]notifications.Notification, error) {
@@ -45,7 +47,16 @@ func (r *NotificationRepository) MarkSent(ctx context.Context, params notificati
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	affected, err := r.queries.MarkScheduledNotificationSent(ctx, sqlc.MarkScheduledNotificationSentParams{
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	txQueries := r.queries.WithTx(tx)
+	affected, err := txQueries.MarkScheduledNotificationSent(ctx, sqlc.MarkScheduledNotificationSentParams{
 		TenantID:            tenantID,
 		ID:                  notificationID,
 		ProcessingStartedAt: timestamptzValue(params.ProcessingStartedAt),
@@ -58,7 +69,13 @@ func (r *NotificationRepository) MarkSent(ctx context.Context, params notificati
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	return nil
+	if _, err := createAuditLog(ctx, txQueries, tenantID, notificationID, moduleaudit.ActionNotificationSent, moduleaudit.EntityTypeNotification, nil, params.At.UTC(), map[string]any{
+		"status": notifications.StatusSent,
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *NotificationRepository) Retry(ctx context.Context, params notifications.RetryParams) error {
@@ -100,7 +117,16 @@ func (r *NotificationRepository) MarkFailed(ctx context.Context, params notifica
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	affected, err := r.queries.FailScheduledNotification(ctx, sqlc.FailScheduledNotificationParams{
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	txQueries := r.queries.WithTx(tx)
+	affected, err := txQueries.FailScheduledNotification(ctx, sqlc.FailScheduledNotificationParams{
 		TenantID:            tenantID,
 		ID:                  notificationID,
 		ProcessingStartedAt: timestamptzValue(params.ProcessingStartedAt),
@@ -113,7 +139,14 @@ func (r *NotificationRepository) MarkFailed(ctx context.Context, params notifica
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	return nil
+	if _, err := createAuditLog(ctx, txQueries, tenantID, notificationID, moduleaudit.ActionNotificationFailed, moduleaudit.EntityTypeNotification, nil, params.At.UTC(), map[string]any{
+		"status":     notifications.StatusFailed,
+		"last_error": params.LastError,
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *NotificationRepository) MarkInvalidToken(ctx context.Context, params notifications.FinalizeParams) error {
@@ -127,7 +160,16 @@ func (r *NotificationRepository) MarkInvalidToken(ctx context.Context, params no
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	affected, err := r.queries.MarkScheduledNotificationInvalidToken(ctx, sqlc.MarkScheduledNotificationInvalidTokenParams{
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	txQueries := r.queries.WithTx(tx)
+	affected, err := txQueries.MarkScheduledNotificationInvalidToken(ctx, sqlc.MarkScheduledNotificationInvalidTokenParams{
 		TenantID:            tenantID,
 		ID:                  notificationID,
 		ProcessingStartedAt: timestamptzValue(params.ProcessingStartedAt),
@@ -140,7 +182,14 @@ func (r *NotificationRepository) MarkInvalidToken(ctx context.Context, params no
 		return notifications.ErrNotificationLeaseLost
 	}
 
-	return nil
+	if _, err := createAuditLog(ctx, txQueries, tenantID, notificationID, moduleaudit.ActionNotificationInvalid, moduleaudit.EntityTypeNotification, nil, params.At.UTC(), map[string]any{
+		"status":     notifications.StatusInvalidToken,
+		"last_error": params.LastError,
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func mapScheduledNotificationRow(row sqlc.ClaimDueScheduledNotificationsRow) notifications.Notification {

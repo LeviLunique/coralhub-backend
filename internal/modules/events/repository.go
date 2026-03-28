@@ -10,12 +10,13 @@ type Repository interface {
 	Update(ctx context.Context, params UpdateParams) (Event, error)
 	GetByIDForMember(ctx context.Context, tenantID string, eventID string, userID string) (Event, error)
 	ListByChoirID(ctx context.Context, tenantID string, choirID string) ([]Event, error)
-	Cancel(ctx context.Context, tenantID string, eventID string) error
+	Cancel(ctx context.Context, params CancelParams) error
 }
 
 type CreateParams struct {
 	TenantID    string
 	ChoirID     string
+	ActorUserID string
 	Title       string
 	Description *string
 	EventType   string
@@ -27,10 +28,17 @@ type CreateParams struct {
 type UpdateParams struct {
 	TenantID    string
 	EventID     string
+	ActorUserID string
 	Title       string
 	Description *string
 	EventType   string
 	Location    *string
 	StartAt     time.Time
 	Reminders   []ScheduledReminder
+}
+
+type CancelParams struct {
+	TenantID    string
+	EventID     string
+	ActorUserID string
 }

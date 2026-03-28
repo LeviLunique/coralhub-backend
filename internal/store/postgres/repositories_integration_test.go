@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	moduleaudit "github.com/LeviLunique/coralhub-backend/internal/modules/audit"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/devices"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
@@ -17,6 +18,7 @@ import (
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestChoirRepositoryCreateAndListByMemberUserIDIntegration(t *testing.T) {
@@ -98,6 +100,7 @@ func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
 	createTempChoirsTable(t, ctx, tx)
 	createTempUsersTable(t, ctx, tx)
 	createTempChoirMembersTable(t, ctx, tx)
+	createTempAuditLogTable(t, ctx, tx)
 
 	tenant := getSeedTenant(t, ctx, queries)
 	userRepository := NewUserRepository(queries)
@@ -129,12 +132,13 @@ func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
 		t.Fatalf("Create choir error = %v", err)
 	}
 
-	repository := NewMembershipRepository(queries)
+	repository := NewMembershipRepository(tx, queries)
 	created, err := repository.Create(ctx, memberships.CreateParams{
-		TenantID: tenant.ID,
-		ChoirID:  choir.ID,
-		UserID:   target.ID,
-		Role:     memberships.RoleMember,
+		TenantID:    tenant.ID,
+		ChoirID:     choir.ID,
+		UserID:      target.ID,
+		Role:        memberships.RoleMember,
+		ActorUserID: actor.ID,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -151,6 +155,23 @@ func TestMembershipRepositoryCreateAndListByChoirIDIntegration(t *testing.T) {
 
 	if created.UserID != target.ID {
 		t.Fatalf("created.UserID = %q, want %q", created.UserID, target.ID)
+	}
+
+	auditRows, err := queries.ListAuditLogByTenantID(ctx, sqlc.ListAuditLogByTenantIDParams{
+		TenantID: mustParseUUID(t, tenant.ID),
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLogByTenantID() error = %v", err)
+	}
+	if len(auditRows) != 1 {
+		t.Fatalf("len(auditRows) = %d, want 1", len(auditRows))
+	}
+	if auditRows[0].Action != moduleaudit.ActionMembershipAdded {
+		t.Fatalf("auditRows[0].Action = %q, want %q", auditRows[0].Action, moduleaudit.ActionMembershipAdded)
+	}
+	if uuidString(auditRows[0].ActorID) != actor.ID {
+		t.Fatalf("auditRows[0].ActorID = %q, want %q", uuidString(auditRows[0].ActorID), actor.ID)
 	}
 }
 
@@ -362,6 +383,7 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 	createTempChoirMembersTable(t, ctx, tx)
 	createTempEventsTable(t, ctx, tx)
 	createTempScheduledNotificationsTable(t, ctx, tx)
+	createTempAuditLogTable(t, ctx, tx)
 
 	tenant := getSeedTenant(t, ctx, queries)
 	userRepository := NewUserRepository(queries)
@@ -393,12 +415,13 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 		t.Fatalf("Create choir error = %v", err)
 	}
 
-	membershipRepository := NewMembershipRepository(queries)
+	membershipRepository := NewMembershipRepository(tx, queries)
 	if _, err := membershipRepository.Create(ctx, memberships.CreateParams{
-		TenantID: tenant.ID,
-		ChoirID:  choir.ID,
-		UserID:   member.ID,
-		Role:     memberships.RoleMember,
+		TenantID:    tenant.ID,
+		ChoirID:     choir.ID,
+		UserID:      member.ID,
+		Role:        memberships.RoleMember,
+		ActorUserID: manager.ID,
 	}); err != nil {
 		t.Fatalf("Create member membership error = %v", err)
 	}
@@ -406,11 +429,12 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 	repository := NewEventRepository(tx, queries)
 	startAt := time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC)
 	created, err := repository.Create(ctx, events.CreateParams{
-		TenantID:  tenant.ID,
-		ChoirID:   choir.ID,
-		Title:     "Main Rehearsal",
-		EventType: events.EventTypeRehearsal,
-		StartAt:   startAt,
+		TenantID:    tenant.ID,
+		ChoirID:     choir.ID,
+		ActorUserID: manager.ID,
+		Title:       "Main Rehearsal",
+		EventType:   events.EventTypeRehearsal,
+		StartAt:     startAt,
 		Reminders: []events.ScheduledReminder{
 			{UserID: manager.ID, ReminderType: events.ReminderTypeDayBefore, ScheduledFor: startAt.Add(-24 * time.Hour), Status: events.NotificationStatusPending},
 			{UserID: manager.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: startAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
@@ -452,11 +476,12 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 
 	updatedStartAt := startAt.Add(48 * time.Hour)
 	updated, err := repository.Update(ctx, events.UpdateParams{
-		TenantID:  tenant.ID,
-		EventID:   created.ID,
-		Title:     "Main Rehearsal Updated",
-		EventType: events.EventTypePresentation,
-		StartAt:   updatedStartAt,
+		TenantID:    tenant.ID,
+		EventID:     created.ID,
+		ActorUserID: manager.ID,
+		Title:       "Main Rehearsal Updated",
+		EventType:   events.EventTypePresentation,
+		StartAt:     updatedStartAt,
 		Reminders: []events.ScheduledReminder{
 			{UserID: manager.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: updatedStartAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
 			{UserID: member.ID, ReminderType: events.ReminderTypeHourBefore, ScheduledFor: updatedStartAt.Add(-1 * time.Hour), Status: events.NotificationStatusPending},
@@ -497,7 +522,11 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 		t.Fatalf("canceledCount after update = %d, want 4", canceledCount)
 	}
 
-	if err := repository.Cancel(ctx, tenant.ID, created.ID); err != nil {
+	if err := repository.Cancel(ctx, events.CancelParams{
+		TenantID:    tenant.ID,
+		EventID:     created.ID,
+		ActorUserID: manager.ID,
+	}); err != nil {
 		t.Fatalf("Cancel() error = %v", err)
 	}
 
@@ -518,11 +547,40 @@ func TestEventRepositoryCreateUpdateAndCancelIntegration(t *testing.T) {
 	if !errors.Is(err, events.ErrEventNotFound) {
 		t.Fatalf("GetByIDForMember() after cancel error = %v, want %v", err, events.ErrEventNotFound)
 	}
+
+	auditRows, err := queries.ListAuditLogByTenantID(ctx, sqlc.ListAuditLogByTenantIDParams{
+		TenantID: tenantUUID,
+		Limit:    20,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLogByTenantID() error = %v", err)
+	}
+
+	actionCounts := map[string]int{}
+	for _, row := range auditRows {
+		actionCounts[row.Action]++
+	}
+	if actionCounts[moduleaudit.ActionMembershipAdded] != 1 {
+		t.Fatalf("membership.added count = %d, want 1", actionCounts[moduleaudit.ActionMembershipAdded])
+	}
+	if actionCounts[moduleaudit.ActionEventCreated] != 1 {
+		t.Fatalf("event.created count = %d, want 1", actionCounts[moduleaudit.ActionEventCreated])
+	}
+	if actionCounts[moduleaudit.ActionEventUpdated] != 1 {
+		t.Fatalf("event.updated count = %d, want 1", actionCounts[moduleaudit.ActionEventUpdated])
+	}
+	if actionCounts[moduleaudit.ActionEventCanceled] != 1 {
+		t.Fatalf("event.canceled count = %d, want 1", actionCounts[moduleaudit.ActionEventCanceled])
+	}
+	if actionCounts[moduleaudit.ActionNotificationsGenerated] != 2 {
+		t.Fatalf("notification.generated count = %d, want 2", actionCounts[moduleaudit.ActionNotificationsGenerated])
+	}
 }
 
 func TestNotificationRepositoryClaimAndStateTransitionsIntegration(t *testing.T) {
 	ctx, queries, tx := openIntegrationTestQueries(t)
 	createTempScheduledNotificationsTable(t, ctx, tx)
+	createTempAuditLogTable(t, ctx, tx)
 
 	tenant := getSeedTenant(t, ctx, queries)
 	tenantUUID, err := parseUUID(tenant.ID)
@@ -586,7 +644,7 @@ func TestNotificationRepositoryClaimAndStateTransitionsIntegration(t *testing.T)
 		t.Fatalf("setting stale processing notification: %v", err)
 	}
 
-	repository := NewNotificationRepository(queries)
+	repository := NewNotificationRepository(tx, queries)
 	claimedAt := time.Date(2026, 4, 20, 20, 0, 0, 0, time.UTC)
 	claimed, err := repository.ClaimDue(ctx, notifications.ClaimParams{
 		ClaimedAt:   claimedAt,
@@ -701,6 +759,63 @@ func TestNotificationRepositoryClaimAndStateTransitionsIntegration(t *testing.T)
 	if attempts[uuidString(third.ID)] != 2 {
 		t.Fatalf("third attempts = %d, want 2", attempts[uuidString(third.ID)])
 	}
+
+	auditRows, err := queries.ListAuditLogByTenantID(ctx, sqlc.ListAuditLogByTenantIDParams{
+		TenantID: tenantUUID,
+		Limit:    20,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLogByTenantID() error = %v", err)
+	}
+
+	actionCounts := map[string]int{}
+	for _, row := range auditRows {
+		actionCounts[row.Action]++
+	}
+	if actionCounts[moduleaudit.ActionNotificationSent] != 1 {
+		t.Fatalf("notification.sent count = %d, want 1", actionCounts[moduleaudit.ActionNotificationSent])
+	}
+	if actionCounts[moduleaudit.ActionNotificationFailed] != 1 {
+		t.Fatalf("notification.failed count = %d, want 1", actionCounts[moduleaudit.ActionNotificationFailed])
+	}
+	if actionCounts[moduleaudit.ActionNotificationInvalid] != 1 {
+		t.Fatalf("notification.invalid_token count = %d, want 1", actionCounts[moduleaudit.ActionNotificationInvalid])
+	}
+}
+
+func TestAuditRepositoryCreateAndListByTenantIDIntegration(t *testing.T) {
+	ctx, queries, tx := openIntegrationTestQueries(t)
+	createTempAuditLogTable(t, ctx, tx)
+
+	tenant := getSeedTenant(t, ctx, queries)
+	repository := NewAuditRepository(queries)
+	created, err := repository.Create(ctx, moduleaudit.CreateParams{
+		TenantID:   tenant.ID,
+		EntityType: moduleaudit.EntityTypeEvent,
+		EntityID:   "8f01f767-68e5-4e99-9cc6-6dfe0fdfd1d7",
+		Action:     moduleaudit.ActionEventCreated,
+		OccurredAt: time.Date(2026, 4, 20, 19, 0, 0, 0, time.UTC),
+		Payload: map[string]any{
+			"title": "Rehearsal",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	listed, err := repository.ListByTenantID(ctx, tenant.ID, 10)
+	if err != nil {
+		t.Fatalf("ListByTenantID() error = %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("len(listed) = %d, want 1", len(listed))
+	}
+	if listed[0].ID != created.ID {
+		t.Fatalf("listed[0].ID = %q, want %q", listed[0].ID, created.ID)
+	}
+	if listed[0].Action != moduleaudit.ActionEventCreated {
+		t.Fatalf("listed[0].Action = %q, want %q", listed[0].Action, moduleaudit.ActionEventCreated)
+	}
 }
 
 func openIntegrationTestQueries(t *testing.T) (context.Context, *sqlc.Queries, pgx.Tx) {
@@ -739,6 +854,17 @@ func getSeedTenant(t *testing.T, ctx context.Context, queries *sqlc.Queries) str
 	}
 
 	return struct{ ID string }{ID: uuidString(row.ID)}
+}
+
+func mustParseUUID(t *testing.T, value string) pgtype.UUID {
+	t.Helper()
+
+	parsed, err := parseUUID(value)
+	if err != nil {
+		t.Fatalf("parseUUID(%q) error = %v", value, err)
+	}
+
+	return parsed
 }
 
 func createTempChoirsTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
@@ -922,5 +1048,27 @@ func createTempScheduledNotificationsTable(t *testing.T, ctx context.Context, tx
 	`)
 	if err != nil {
 		t.Fatalf("creating temp scheduled_notifications table: %v", err)
+	}
+}
+
+func createTempAuditLogTable(t *testing.T, ctx context.Context, tx pgx.Tx) {
+	t.Helper()
+
+	_, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE audit_log (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL,
+			entity_type TEXT NOT NULL,
+			entity_id UUID NOT NULL,
+			action TEXT NOT NULL,
+			actor_id UUID,
+			occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
+		) ON COMMIT DROP;
+		CREATE INDEX audit_log_tenant_occurred_at_idx ON audit_log (tenant_id, occurred_at DESC);
+		CREATE INDEX audit_log_tenant_entity_idx ON audit_log (tenant_id, entity_type, entity_id, occurred_at DESC);
+	`)
+	if err != nil {
+		t.Fatalf("creating temp audit_log table: %v", err)
 	}
 }
