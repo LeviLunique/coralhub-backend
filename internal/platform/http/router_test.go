@@ -13,7 +13,6 @@ import (
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
-	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
@@ -422,40 +421,6 @@ func (s *voiceKitStubRepository) ListByChoirID(_ context.Context, _, _ string) (
 }
 
 func (s *voiceKitStubRepository) Delete(_ context.Context, _, _ string) error {
-	return s.err
-}
-
-type fileStubRepository struct {
-	file  modulefiles.File
-	files []modulefiles.File
-	err   error
-}
-
-func (s *fileStubRepository) Create(_ context.Context, _ modulefiles.CreateParams) (modulefiles.File, error) {
-	if s.err != nil {
-		return modulefiles.File{}, s.err
-	}
-
-	return s.file, nil
-}
-
-func (s *fileStubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (modulefiles.File, error) {
-	if s.err != nil {
-		return modulefiles.File{}, s.err
-	}
-
-	return s.file, nil
-}
-
-func (s *fileStubRepository) ListByVoiceKitID(_ context.Context, _, _ string) ([]modulefiles.File, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-
-	return s.files, nil
-}
-
-func (s *fileStubRepository) Delete(_ context.Context, _, _ string) error {
 	return s.err
 }
 
