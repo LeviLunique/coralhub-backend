@@ -25,7 +25,7 @@ type Sender struct {
 }
 
 func New(ctx context.Context, cfg platformconfig.FirebaseConfig, deviceStore devices.Repository) (*Sender, error) {
-	app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(cfg.CredentialsFile))
+	app, err := firebase.NewApp(ctx, nil, option.WithAuthCredentialsFile(option.ServiceAccount, cfg.CredentialsFile))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func classifyMessagingError(err error) string {
 		return notifications.DeliverySent
 	}
 
-	if messaging.IsRegistrationTokenNotRegistered(err) || messaging.IsUnregistered(err) || messaging.IsInvalidArgument(err) {
+	if messaging.IsUnregistered(err) || messaging.IsInvalidArgument(err) {
 		return notifications.DeliveryInvalidToken
 	}
 
