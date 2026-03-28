@@ -29,6 +29,20 @@ type ChoirMember struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type KitFile struct {
+	ID               pgtype.UUID        `json:"id"`
+	TenantID         pgtype.UUID        `json:"tenant_id"`
+	VoiceKitID       pgtype.UUID        `json:"voice_kit_id"`
+	OriginalFilename string             `json:"original_filename"`
+	StoredFilename   string             `json:"stored_filename"`
+	ContentType      string             `json:"content_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	StorageKey       string             `json:"storage_key"`
+	Active           bool               `json:"active"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Tenant struct {
 	ID          pgtype.UUID        `json:"id"`
 	Slug        string             `json:"slug"`
@@ -56,4 +70,15 @@ type User struct {
 	Active    bool               `json:"active"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VoiceKit struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ChoirID     pgtype.UUID        `json:"choir_id"`
+	Name        string             `json:"name"`
+	Description pgtype.Text        `json:"description"`
+	Active      bool               `json:"active"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
