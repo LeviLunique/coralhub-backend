@@ -6,5 +6,4 @@
 bin/
 coverage.out
 dist/
-docs/
 tmp/
