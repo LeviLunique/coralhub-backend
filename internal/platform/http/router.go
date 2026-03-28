@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
@@ -19,6 +21,8 @@ func NewRouter(
 	choirService *choirs.Service,
 	userService *moduleusers.Service,
 	membershipService *memberships.Service,
+	voiceKitService *voicekits.Service,
+	fileService *modulefiles.Service,
 ) http.Handler {
 	router := chi.NewRouter()
 
@@ -56,7 +60,7 @@ func NewRouter(
 			})
 		}
 
-		if tenantService != nil && userService != nil && (choirService != nil || membershipService != nil) {
+		if tenantService != nil && userService != nil && (choirService != nil || membershipService != nil || voiceKitService != nil || fileService != nil) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(RequireActorContext(tenantService, userService))
 
@@ -66,6 +70,14 @@ func NewRouter(
 
 				if membershipService != nil {
 					memberships.RegisterRoutes(protected, membershipService)
+				}
+
+				if voiceKitService != nil {
+					voicekits.RegisterRoutes(protected, voiceKitService)
+				}
+
+				if fileService != nil {
+					modulefiles.RegisterRoutes(protected, fileService)
 				}
 			})
 		}
