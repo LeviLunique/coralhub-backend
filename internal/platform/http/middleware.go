@@ -1,6 +1,7 @@
 package platformhttp
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -9,7 +10,9 @@ import (
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
+	platformobservability "github.com/LeviLunique/coralhub-backend/internal/platform/observability"
 	"github.com/LeviLunique/coralhub-backend/internal/platform/requestctx"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
@@ -21,6 +24,11 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(ww, r)
 
+			statusCode := ww.Status()
+			if statusCode == 0 {
+				statusCode = http.StatusOK
+			}
+
 			logger.InfoContext(
 				r.Context(),
 				"http request",
@@ -31,10 +39,26 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				"path",
 				r.URL.Path,
 				"status",
-				ww.Status(),
+				statusCode,
 				"duration",
 				time.Since(startedAt).String(),
 			)
+			platformobservability.DefaultMetrics().ObserveHTTPRequest(r.Method, r.URL.Path, statusCode, time.Since(startedAt))
+		})
+	}
+}
+
+func Timeout(duration time.Duration) func(http.Handler) http.Handler {
+	if duration <= 0 {
+		duration = 30 * time.Second
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), duration)
+			defer cancel()
+
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -44,7 +68,7 @@ func RequireTenantContext(service *tenants.Service) func(http.Handler) http.Hand
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tenantSlug := strings.TrimSpace(r.Header.Get("X-Tenant-Slug"))
 			if tenantSlug == "" {
-				WriteError(w, http.StatusBadRequest, "X-Tenant-Slug header is required")
+				platformweb.WriteError(w, r, http.StatusBadRequest, "tenant_header_required", "X-Tenant-Slug header is required")
 				return
 			}
 
@@ -52,11 +76,11 @@ func RequireTenantContext(service *tenants.Service) func(http.Handler) http.Hand
 			if err != nil {
 				switch {
 				case errors.Is(err, tenants.ErrInvalidTenantSlug):
-					WriteError(w, http.StatusBadRequest, "tenant slug is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_tenant_slug", "tenant slug is required")
 				case errors.Is(err, tenants.ErrTenantNotFound):
-					WriteError(w, http.StatusNotFound, "tenant not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "tenant_not_found", "tenant not found")
 				default:
-					WriteError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
@@ -71,13 +95,13 @@ func RequireActorContext(tenantService *tenants.Service, userService *moduleuser
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tenantSlug := strings.TrimSpace(r.Header.Get("X-Tenant-Slug"))
 			if tenantSlug == "" {
-				WriteError(w, http.StatusBadRequest, "X-Tenant-Slug header is required")
+				platformweb.WriteError(w, r, http.StatusBadRequest, "tenant_header_required", "X-Tenant-Slug header is required")
 				return
 			}
 
 			userEmail := strings.TrimSpace(r.Header.Get("X-User-Email"))
 			if userEmail == "" {
-				WriteError(w, http.StatusBadRequest, "X-User-Email header is required")
+				platformweb.WriteError(w, r, http.StatusBadRequest, "actor_header_required", "X-User-Email header is required")
 				return
 			}
 
@@ -85,11 +109,11 @@ func RequireActorContext(tenantService *tenants.Service, userService *moduleuser
 			if err != nil {
 				switch {
 				case errors.Is(err, tenants.ErrInvalidTenantSlug):
-					WriteError(w, http.StatusBadRequest, "tenant slug is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_tenant_slug", "tenant slug is required")
 				case errors.Is(err, tenants.ErrTenantNotFound):
-					WriteError(w, http.StatusNotFound, "tenant not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "tenant_not_found", "tenant not found")
 				default:
-					WriteError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
@@ -98,11 +122,11 @@ func RequireActorContext(tenantService *tenants.Service, userService *moduleuser
 			if err != nil {
 				switch {
 				case errors.Is(err, moduleusers.ErrInvalidEmail):
-					WriteError(w, http.StatusBadRequest, "valid user email is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_actor_email", "valid user email is required")
 				case errors.Is(err, moduleusers.ErrUserNotFound):
-					WriteError(w, http.StatusUnauthorized, "actor user not found")
+					platformweb.WriteError(w, r, http.StatusUnauthorized, "actor_not_found", "actor user not found")
 				default:
-					WriteError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}

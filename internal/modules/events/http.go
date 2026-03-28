@@ -1,11 +1,11 @@
 package events
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/LeviLunique/coralhub-backend/internal/platform/requestctx"
+	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -14,18 +14,18 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
 			var input CreateInput
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid request body")
+			if err := platformweb.DecodeJSONBody(r, &input); err != nil {
+				platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_request_body", "request body must be a single valid JSON object")
 				return
 			}
 
@@ -33,33 +33,33 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidChoirID):
-					writeError(w, http.StatusBadRequest, "choir id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_choir_id", "choir id is required")
 				case errors.Is(err, ErrInvalidTitle):
-					writeError(w, http.StatusBadRequest, "title is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_title", "title is required")
 				case errors.Is(err, ErrInvalidEventType):
-					writeError(w, http.StatusBadRequest, "event type must be rehearsal, presentation, or other")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_type", "event type must be rehearsal, presentation, or other")
 				case errors.Is(err, ErrInvalidStartAt):
-					writeError(w, http.StatusBadRequest, "start_at is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_start_at", "start_at is required")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor cannot manage this choir")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor cannot manage this choir")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusCreated, event)
+			platformweb.WriteJSON(w, http.StatusCreated, event)
 		})
 
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -67,16 +67,16 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidChoirID):
-					writeError(w, http.StatusBadRequest, "choir id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_choir_id", "choir id is required")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor is not a member of this choir")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor is not a member of this choir")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, map[string][]Event{"items": items})
+			platformweb.WriteJSON(w, http.StatusOK, map[string][]Event{"items": items})
 		})
 	})
 
@@ -84,12 +84,12 @@ func RegisterRoutes(router chi.Router, service *Service) {
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -97,33 +97,33 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidEventID):
-					writeError(w, http.StatusBadRequest, "event id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_id", "event id is required")
 				case errors.Is(err, ErrEventNotFound):
-					writeError(w, http.StatusNotFound, "event not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "event_not_found", "event not found")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, event)
+			platformweb.WriteJSON(w, http.StatusOK, event)
 		})
 
 		r.Put("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
 			var input UpdateInput
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid request body")
+			if err := platformweb.DecodeJSONBody(r, &input); err != nil {
+				platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_request_body", "request body must be a single valid JSON object")
 				return
 			}
 
@@ -131,35 +131,35 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidEventID):
-					writeError(w, http.StatusBadRequest, "event id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_id", "event id is required")
 				case errors.Is(err, ErrInvalidTitle):
-					writeError(w, http.StatusBadRequest, "title is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_title", "title is required")
 				case errors.Is(err, ErrInvalidEventType):
-					writeError(w, http.StatusBadRequest, "event type must be rehearsal, presentation, or other")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_type", "event type must be rehearsal, presentation, or other")
 				case errors.Is(err, ErrInvalidStartAt):
-					writeError(w, http.StatusBadRequest, "start_at is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_start_at", "start_at is required")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor cannot manage this choir")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor cannot manage this choir")
 				case errors.Is(err, ErrEventNotFound):
-					writeError(w, http.StatusNotFound, "event not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "event_not_found", "event not found")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
-			writeJSON(w, http.StatusOK, event)
+			platformweb.WriteJSON(w, http.StatusOK, event)
 		})
 
 		r.Delete("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "tenant context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "tenant_context_missing", "tenant context missing")
 				return
 			}
 			actor, ok := requestctx.ActorFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusInternalServerError, "actor context missing")
+				platformweb.WriteError(w, r, http.StatusInternalServerError, "actor_context_missing", "actor context missing")
 				return
 			}
 
@@ -167,31 +167,18 @@ func RegisterRoutes(router chi.Router, service *Service) {
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrInvalidEventID):
-					writeError(w, http.StatusBadRequest, "event id is required")
+					platformweb.WriteError(w, r, http.StatusBadRequest, "invalid_event_id", "event id is required")
 				case errors.Is(err, ErrForbidden):
-					writeError(w, http.StatusForbidden, "actor cannot manage this choir")
+					platformweb.WriteError(w, r, http.StatusForbidden, "forbidden", "actor cannot manage this choir")
 				case errors.Is(err, ErrEventNotFound):
-					writeError(w, http.StatusNotFound, "event not found")
+					platformweb.WriteError(w, r, http.StatusNotFound, "event_not_found", "event not found")
 				default:
-					writeError(w, http.StatusInternalServerError, "internal server error")
+					platformweb.WriteError(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
 				}
 				return
 			}
 
 			w.WriteHeader(http.StatusNoContent)
 		})
-	})
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, map[string]string{
-		"error": message,
 	})
 }

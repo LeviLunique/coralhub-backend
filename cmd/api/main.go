@@ -68,7 +68,7 @@ func main() {
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger, tenantService, choirService, userService, membershipService, voiceKitService, fileService, eventService),
+		Handler:           platformhttp.NewRouter(logger, cfg.HTTP.HandlerTimeout, tenantService, choirService, userService, membershipService, voiceKitService, fileService, eventService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,

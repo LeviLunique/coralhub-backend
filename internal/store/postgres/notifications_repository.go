@@ -192,6 +192,10 @@ func (r *NotificationRepository) MarkInvalidToken(ctx context.Context, params no
 	return tx.Commit(ctx)
 }
 
+func (r *NotificationRepository) CleanupTerminalBefore(ctx context.Context, before time.Time) (int64, error) {
+	return r.queries.DeleteExpiredScheduledNotifications(ctx, timestamptzValue(before))
+}
+
 func mapScheduledNotificationRow(row sqlc.ClaimDueScheduledNotificationsRow) notifications.Notification {
 	var processingStartedAt *time.Time
 	if row.ProcessingStartedAt.Valid {
