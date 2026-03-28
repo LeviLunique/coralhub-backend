@@ -10,13 +10,14 @@ import (
 	"testing"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
 )
 
 func TestNewRouterHealthEndpoints(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, nil, nil, nil)
+	router := NewRouter(logger, nil, nil, nil, nil)
 
 	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -38,7 +39,7 @@ func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 			DisplayName: "Coral Jovem Asa Norte",
 		},
 	})
-	router := NewRouter(logger, service, nil, nil)
+	router := NewRouter(logger, service, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/tenants/coral-jovem-asa-norte", nil)
 	recorder := httptest.NewRecorder()
@@ -50,13 +51,22 @@ func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 	}
 }
 
-func TestNewRouterChoirCreateEndpointRequiresTenantContext(t *testing.T) {
+func TestNewRouterChoirCreateEndpointRequiresActorContext(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tenantService := tenants.NewService(&tenantStubRepository{
 		tenant: tenants.Context{
 			ID:          "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
 			Slug:        "coral-jovem-asa-norte",
 			DisplayName: "Coral Jovem Asa Norte",
+		},
+	})
+	userService := moduleusers.NewService(&userStubRepository{
+		user: moduleusers.User{
+			ID:       "4ab4f4a4-a208-44dc-bf90-7a4e0d65ea7c",
+			TenantID: "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			Email:    "ana@example.com",
+			FullName: "Ana Clara",
+			Active:   true,
 		},
 	})
 	choirService := choirs.NewService(&choirStubRepository{
@@ -67,11 +77,12 @@ func TestNewRouterChoirCreateEndpointRequiresTenantContext(t *testing.T) {
 			Active:   true,
 		},
 	})
-	router := NewRouter(logger, tenantService, choirService, nil)
+	router := NewRouter(logger, tenantService, choirService, userService, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs", strings.NewReader(`{"name":"Sopranos"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
+	req.Header.Set("X-User-Email", "ana@example.com")
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, req)
@@ -83,11 +94,17 @@ func TestNewRouterChoirCreateEndpointRequiresTenantContext(t *testing.T) {
 
 func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	tenantService := tenants.NewService(&tenantStubRepository{})
+	tenantService := tenants.NewService(&tenantStubRepository{
+		tenant: tenants.Context{
+			ID:          "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			Slug:        "coral-jovem-asa-norte",
+			DisplayName: "Coral Jovem Asa Norte",
+		},
+	})
 	userService := moduleusers.NewService(&userStubRepository{
 		users: []moduleusers.User{{ID: "user-1", Email: "ana@example.com", FullName: "Ana Clara", Active: true}},
 	})
-	router := NewRouter(logger, tenantService, nil, userService)
+	router := NewRouter(logger, tenantService, nil, userService, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	recorder := httptest.NewRecorder()
@@ -96,6 +113,30 @@ func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("user list returned %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestNewRouterMembershipListEndpointRequiresActorHeader(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tenantService := tenants.NewService(&tenantStubRepository{
+		tenant: tenants.Context{
+			ID:          "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			Slug:        "coral-jovem-asa-norte",
+			DisplayName: "Coral Jovem Asa Norte",
+		},
+	})
+	userService := moduleusers.NewService(&userStubRepository{})
+	membershipService := memberships.NewService(&membershipStubRepository{})
+	router := NewRouter(logger, tenantService, nil, userService, membershipService)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/choirs/choir-1/memberships", nil)
+	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("membership list returned %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 
@@ -135,7 +176,7 @@ func (s *choirStubRepository) Create(_ context.Context, _ choirs.CreateParams) (
 	return s.choir, nil
 }
 
-func (s *choirStubRepository) GetByID(_ context.Context, _, _ string) (choirs.Choir, error) {
+func (s *choirStubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (choirs.Choir, error) {
 	if s.err != nil {
 		return choirs.Choir{}, s.err
 	}
@@ -143,7 +184,7 @@ func (s *choirStubRepository) GetByID(_ context.Context, _, _ string) (choirs.Ch
 	return s.choir, nil
 }
 
-func (s *choirStubRepository) ListByTenantID(_ context.Context, _ string) ([]choirs.Choir, error) {
+func (s *choirStubRepository) ListByMemberUserID(_ context.Context, _, _ string) ([]choirs.Choir, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -173,10 +214,48 @@ func (s *userStubRepository) GetByID(_ context.Context, _, _ string) (moduleuser
 	return s.user, nil
 }
 
+func (s *userStubRepository) GetByEmail(_ context.Context, _, _ string) (moduleusers.User, error) {
+	if s.err != nil {
+		return moduleusers.User{}, s.err
+	}
+
+	return s.user, nil
+}
+
 func (s *userStubRepository) ListByTenantID(_ context.Context, _ string) ([]moduleusers.User, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 
 	return s.users, nil
+}
+
+type membershipStubRepository struct {
+	membership  memberships.Membership
+	memberships []memberships.Membership
+	err         error
+}
+
+func (s *membershipStubRepository) Create(_ context.Context, _ memberships.CreateParams) (memberships.Membership, error) {
+	if s.err != nil {
+		return memberships.Membership{}, s.err
+	}
+
+	return s.membership, nil
+}
+
+func (s *membershipStubRepository) GetByChoirAndUser(_ context.Context, _, _, _ string) (memberships.Membership, error) {
+	if s.err != nil {
+		return memberships.Membership{}, s.err
+	}
+
+	return s.membership, nil
+}
+
+func (s *membershipStubRepository) ListByChoirID(_ context.Context, _, _ string) ([]memberships.Membership, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.memberships, nil
 }

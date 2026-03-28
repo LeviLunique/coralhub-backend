@@ -4,6 +4,7 @@ import "context"
 
 type Repository interface {
 	Create(ctx context.Context, params CreateParams) (User, error)
+	GetByEmail(ctx context.Context, tenantID string, email string) (User, error)
 	GetByID(ctx context.Context, tenantID string, userID string) (User, error)
 	ListByTenantID(ctx context.Context, tenantID string) ([]User, error)
 }
