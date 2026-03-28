@@ -141,6 +141,24 @@ func (c DatabaseConfig) ConnectionString() string {
 	return connectionURL.String()
 }
 
+func (c StorageConfig) EndpointURL() string {
+	endpoint := strings.TrimSpace(c.Endpoint)
+	if endpoint == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		return endpoint
+	}
+
+	scheme := "http"
+	if c.UseSSL {
+		scheme = "https"
+	}
+
+	return scheme + "://" + endpoint
+}
+
 func envOrDefault(lookup envLookup, key string, fallback string) string {
 	value, ok := lookup(key)
 	if !ok || strings.TrimSpace(value) == "" {

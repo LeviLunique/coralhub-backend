@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	s3storage "github.com/LeviLunique/coralhub-backend/internal/integrations/storage/s3"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
@@ -55,7 +56,12 @@ func main() {
 	voiceKitRepository := postgres.NewVoiceKitRepository(queries)
 	voiceKitService := voicekits.NewService(voiceKitRepository, membershipRepository)
 	fileRepository := postgres.NewFileRepository(queries)
-	fileService := modulefiles.NewService(fileRepository, voiceKitRepository, membershipRepository)
+	storageClient, err := s3storage.New(cfg.Storage)
+	if err != nil {
+		logger.Error("failed to initialize storage client", "error", err)
+		os.Exit(1)
+	}
+	fileService := modulefiles.NewService(fileRepository, storageClient, voiceKitRepository, membershipRepository, cfg.AppEnv)
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
