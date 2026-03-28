@@ -259,6 +259,7 @@ func TestFileRepositoryCreateListAndDeleteIntegration(t *testing.T) {
 
 	repository := NewFileRepository(queries)
 	created, err := repository.Create(ctx, modulefiles.CreateParams{
+		ID:               "8f01f767-68e5-4e99-9cc6-6dfe0fdfd1d7",
 		TenantID:         tenant.ID,
 		VoiceKitID:       voiceKit.ID,
 		OriginalFilename: "score.pdf",

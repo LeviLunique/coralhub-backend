@@ -1,9 +1,12 @@
 package files
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
@@ -21,6 +24,10 @@ func (s *stubRepository) Create(_ context.Context, params CreateParams) (File, e
 	s.create = params
 	if s.err != nil {
 		return File{}, s.err
+	}
+
+	if s.file.ID == "" {
+		s.file.ID = params.ID
 	}
 
 	return s.file, nil
@@ -51,6 +58,43 @@ func (s *stubRepository) Delete(_ context.Context, _, fileID string) error {
 	return nil
 }
 
+type stubStorage struct {
+	putKey     string
+	putBody    []byte
+	putType    string
+	deleteKey  string
+	presignKey string
+	presignTTL time.Duration
+	presignURL string
+	err        error
+}
+
+func (s *stubStorage) PutObject(_ context.Context, objectKey string, body io.Reader, _ int64, contentType string) error {
+	s.putKey = objectKey
+	s.putType = contentType
+	if body != nil {
+		payload, _ := io.ReadAll(body)
+		s.putBody = payload
+	}
+
+	return s.err
+}
+
+func (s *stubStorage) DeleteObject(_ context.Context, objectKey string) error {
+	s.deleteKey = objectKey
+	return s.err
+}
+
+func (s *stubStorage) PresignGetObject(_ context.Context, objectKey string, expiresIn time.Duration) (string, error) {
+	s.presignKey = objectKey
+	s.presignTTL = expiresIn
+	if s.err != nil {
+		return "", s.err
+	}
+
+	return s.presignURL, nil
+}
+
 type stubVoiceKitReader struct {
 	voiceKit voicekits.VoiceKit
 	err      error
@@ -77,61 +121,107 @@ func (s *stubMembershipChecker) GetByChoirAndUser(_ context.Context, _, _, _ str
 	return s.membership, nil
 }
 
-func TestServiceCreateRequiresManagerRole(t *testing.T) {
+func TestServiceUploadRequiresManagerRole(t *testing.T) {
 	repository := &stubRepository{}
-	service := NewService(repository, &stubVoiceKitReader{
+	storage := &stubStorage{}
+	service := NewService(repository, storage, &stubVoiceKitReader{
 		voiceKit: voicekits.VoiceKit{ID: "kit-1", ChoirID: "choir-1"},
 	}, &stubMembershipChecker{
 		membership: memberships.Membership{Role: memberships.RoleMember},
-	})
+	}, "development")
 
-	_, err := service.Create(context.Background(), "tenant-1", "kit-1", "actor-1", CreateInput{
+	_, err := service.Upload(context.Background(), "tenant-1", "tenant-slug", "kit-1", "actor-1", UploadInput{
 		OriginalFilename: "score.pdf",
-		StoredFilename:   "stored-score.pdf",
 		ContentType:      "application/pdf",
 		SizeBytes:        42,
-		StorageKey:       "dev/tenants/tenant/files/file-1/stored-score.pdf",
+		Content:          bytes.NewBufferString("pdf"),
 	})
 	if !errors.Is(err, ErrForbidden) {
-		t.Fatalf("Create() error = %v, want %v", err, ErrForbidden)
+		t.Fatalf("Upload() error = %v, want %v", err, ErrForbidden)
 	}
 }
 
-func TestServiceCreateValidatesAndTrimsFields(t *testing.T) {
+func TestServiceUploadBuildsStorageMetadata(t *testing.T) {
 	repository := &stubRepository{
-		file: File{ID: "file-1"},
+		file: File{ID: "ignored"},
 	}
-	service := NewService(repository, &stubVoiceKitReader{
+	storage := &stubStorage{}
+	service := NewService(repository, storage, &stubVoiceKitReader{
 		voiceKit: voicekits.VoiceKit{ID: "kit-1", ChoirID: "choir-1"},
 	}, &stubMembershipChecker{
 		membership: memberships.Membership{Role: memberships.RoleManager},
-	})
+	}, "development")
 
-	_, err := service.Create(context.Background(), "tenant-1", "kit-1", "actor-1", CreateInput{
+	file, err := service.Upload(context.Background(), "tenant-1", "coral-jovem-asa-norte", "kit-1", "actor-1", UploadInput{
 		OriginalFilename: "  score.pdf  ",
-		StoredFilename:   "  01-score.pdf  ",
-		ContentType:      "  application/pdf  ",
+		ContentType:      " application/pdf ",
 		SizeBytes:        42,
-		StorageKey:       "  dev/tenants/tenant/files/file-1/01-score.pdf  ",
+		Content:          bytes.NewBufferString("pdf"),
 	})
 	if err != nil {
-		t.Fatalf("Create() error = %v", err)
+		t.Fatalf("Upload() error = %v", err)
 	}
 
-	if repository.create.OriginalFilename != "score.pdf" {
-		t.Fatalf("repository.create.OriginalFilename = %q", repository.create.OriginalFilename)
+	if file.ID == "" {
+		t.Fatal("file.ID is empty")
 	}
 
-	if repository.create.StoredFilename != "01-score.pdf" {
-		t.Fatalf("repository.create.StoredFilename = %q", repository.create.StoredFilename)
+	if repository.create.ID == "" {
+		t.Fatal("repository.create.ID is empty")
+	}
+
+	if repository.create.StoredFilename == "" {
+		t.Fatal("repository.create.StoredFilename is empty")
+	}
+
+	if storage.putKey == "" {
+		t.Fatal("storage.putKey is empty")
+	}
+
+	if repository.create.StorageKey != storage.putKey {
+		t.Fatalf("repository.create.StorageKey = %q, want %q", repository.create.StorageKey, storage.putKey)
 	}
 
 	if repository.create.ContentType != "application/pdf" {
 		t.Fatalf("repository.create.ContentType = %q", repository.create.ContentType)
 	}
+}
 
-	if repository.create.StorageKey != "dev/tenants/tenant/files/file-1/01-score.pdf" {
-		t.Fatalf("repository.create.StorageKey = %q", repository.create.StorageKey)
+func TestServiceUploadRejectsUnsupportedContentType(t *testing.T) {
+	service := NewService(&stubRepository{}, &stubStorage{}, &stubVoiceKitReader{
+		voiceKit: voicekits.VoiceKit{ID: "kit-1", ChoirID: "choir-1"},
+	}, &stubMembershipChecker{
+		membership: memberships.Membership{Role: memberships.RoleManager},
+	}, "development")
+
+	_, err := service.Upload(context.Background(), "tenant-1", "tenant-slug", "kit-1", "actor-1", UploadInput{
+		OriginalFilename: "notes.txt",
+		ContentType:      "text/plain",
+		SizeBytes:        5,
+		Content:          bytes.NewBufferString("notes"),
+	})
+	if !errors.Is(err, ErrUnsupportedContentType) {
+		t.Fatalf("Upload() error = %v, want %v", err, ErrUnsupportedContentType)
+	}
+}
+
+func TestServiceGetDownloadURLUsesStorage(t *testing.T) {
+	storage := &stubStorage{presignURL: "http://example.com/file"}
+	service := NewService(&stubRepository{
+		file: File{ID: "file-1", StorageKey: "development/tenants/coral/files/file-1/score.pdf"},
+	}, storage, &stubVoiceKitReader{}, &stubMembershipChecker{}, "development")
+
+	result, err := service.GetDownloadURL(context.Background(), "tenant-1", "file-1", "actor-1")
+	if err != nil {
+		t.Fatalf("GetDownloadURL() error = %v", err)
+	}
+
+	if result.URL != "http://example.com/file" {
+		t.Fatalf("result.URL = %q", result.URL)
+	}
+
+	if storage.presignKey == "" {
+		t.Fatal("storage.presignKey is empty")
 	}
 }
 
@@ -139,9 +229,9 @@ func TestServiceDeleteRequiresManagerRole(t *testing.T) {
 	repository := &stubRepository{
 		file: File{ID: "file-1", ChoirID: "choir-1"},
 	}
-	service := NewService(repository, &stubVoiceKitReader{}, &stubMembershipChecker{
+	service := NewService(repository, &stubStorage{}, &stubVoiceKitReader{}, &stubMembershipChecker{
 		membership: memberships.Membership{Role: memberships.RoleMember},
-	})
+	}, "development")
 
 	err := service.Delete(context.Background(), "tenant-1", "file-1", "actor-1")
 	if !errors.Is(err, ErrForbidden) {

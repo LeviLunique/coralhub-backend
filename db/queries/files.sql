@@ -1,6 +1,6 @@
 -- name: CreateKitFile :one
-INSERT INTO kit_files (tenant_id, voice_kit_id, original_filename, stored_filename, content_type, size_bytes, storage_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO kit_files (id, tenant_id, voice_kit_id, original_filename, stored_filename, content_type, size_bytes, storage_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, tenant_id, voice_kit_id, original_filename, stored_filename, content_type, size_bytes, storage_key, active, created_at, updated_at;
 
 -- name: GetKitFileByIDForMember :one

@@ -1,5 +1,10 @@
 package files
 
+import (
+	"io"
+	"time"
+)
+
 type File struct {
 	ID               string `json:"id"`
 	TenantID         string `json:"tenant_id"`
@@ -13,10 +18,14 @@ type File struct {
 	Active           bool   `json:"active"`
 }
 
-type CreateInput struct {
-	OriginalFilename string `json:"original_filename"`
-	StoredFilename   string `json:"stored_filename"`
-	ContentType      string `json:"content_type"`
-	SizeBytes        int64  `json:"size_bytes"`
-	StorageKey       string `json:"storage_key"`
+type UploadInput struct {
+	OriginalFilename string
+	ContentType      string
+	SizeBytes        int64
+	Content          io.Reader
+}
+
+type DownloadURL struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
 }

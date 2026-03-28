@@ -10,6 +10,7 @@ type Repository interface {
 }
 
 type CreateParams struct {
+	ID               string
 	TenantID         string
 	VoiceKitID       string
 	OriginalFilename string
