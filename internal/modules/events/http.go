@@ -10,6 +10,8 @@ import (
 )
 
 func RegisterRoutes(router chi.Router, service *Service) {
+	registerRepertoireRoutes(router, service)
+
 	router.Route("/choirs/{choirID}/events", func(r chi.Router) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			tenant, ok := requestctx.TenantFromContext(r.Context())

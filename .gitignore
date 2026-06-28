@@ -8,3 +8,7 @@ coverage.out
 dist/
 docs/
 tmp/
+
+# Compiled binaries (go build output)
+/api
+/worker

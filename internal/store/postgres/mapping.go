@@ -36,6 +36,28 @@ func timestamptzValue(value time.Time) pgtype.Timestamptz {
 	}
 }
 
+func uuidPointer(value pgtype.UUID) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	text := uuidString(value)
+	return &text
+}
+
+func uuidValue(value *string) (pgtype.UUID, error) {
+	if value == nil {
+		return pgtype.UUID{}, nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return pgtype.UUID{}, nil
+	}
+
+	return parseUUID(trimmed)
+}
+
 func uuidString(value pgtype.UUID) string {
 	if !value.Valid {
 		return ""

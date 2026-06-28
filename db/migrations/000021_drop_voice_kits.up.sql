@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS kit_files;
+DROP TABLE IF EXISTS voice_kits;

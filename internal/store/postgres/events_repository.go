@@ -9,6 +9,7 @@ import (
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
 	"github.com/LeviLunique/coralhub-backend/internal/store/postgres/sqlc"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -256,6 +257,104 @@ func (r *EventRepository) Cancel(ctx context.Context, params events.CancelParams
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (r *EventRepository) AddRepertoire(ctx context.Context, tenantID string, eventID string, repertoireID string) error {
+	tenantUUID, err := parseUUID(tenantID)
+	if err != nil {
+		return events.ErrInvalidTenantID
+	}
+
+	eventUUID, err := parseUUID(eventID)
+	if err != nil {
+		return events.ErrInvalidEventID
+	}
+
+	repertoireUUID, err := parseUUID(repertoireID)
+	if err != nil {
+		return events.ErrInvalidRepertoireID
+	}
+
+	if _, err := r.queries.AddRepertoireToEvent(ctx, sqlc.AddRepertoireToEventParams{
+		TenantID:     tenantUUID,
+		EventID:      eventUUID,
+		RepertoireID: repertoireUUID,
+	}); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return events.ErrRepertoireLinkExists
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func (r *EventRepository) RemoveRepertoire(ctx context.Context, tenantID string, eventID string, repertoireID string) error {
+	tenantUUID, err := parseUUID(tenantID)
+	if err != nil {
+		return events.ErrInvalidTenantID
+	}
+
+	eventUUID, err := parseUUID(eventID)
+	if err != nil {
+		return events.ErrInvalidEventID
+	}
+
+	repertoireUUID, err := parseUUID(repertoireID)
+	if err != nil {
+		return events.ErrInvalidRepertoireID
+	}
+
+	affected, err := r.queries.RemoveRepertoireFromEvent(ctx, sqlc.RemoveRepertoireFromEventParams{
+		TenantID:     tenantUUID,
+		EventID:      eventUUID,
+		RepertoireID: repertoireUUID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return events.ErrRepertoireLinkNotFound
+	}
+
+	return nil
+}
+
+func (r *EventRepository) ListRepertoires(ctx context.Context, tenantID string, eventID string) ([]events.Repertoire, error) {
+	tenantUUID, err := parseUUID(tenantID)
+	if err != nil {
+		return nil, events.ErrInvalidTenantID
+	}
+
+	eventUUID, err := parseUUID(eventID)
+	if err != nil {
+		return nil, events.ErrInvalidEventID
+	}
+
+	rows, err := r.queries.ListRepertoiresByEvent(ctx, sqlc.ListRepertoiresByEventParams{
+		TenantID: tenantUUID,
+		EventID:  eventUUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]events.Repertoire, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, events.Repertoire{
+			ID:          uuidString(row.ID),
+			TenantID:    uuidString(row.TenantID),
+			ChoirID:     uuidString(row.ChoirID),
+			Name:        row.Name,
+			Description: textPointer(row.Description),
+			Archived:    row.Archived,
+		})
+	}
+
+	return items, nil
 }
 
 func insertScheduledNotifications(ctx context.Context, queries *sqlc.Queries, tenantID pgtype.UUID, eventID pgtype.UUID, reminders []events.ScheduledReminder) error {

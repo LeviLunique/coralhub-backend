@@ -19,6 +19,10 @@ var (
 	ErrInvalidStartAt   = errors.New("invalid start at")
 	ErrEventNotFound    = errors.New("event not found")
 	ErrForbidden        = errors.New("forbidden")
+
+	ErrInvalidRepertoireID    = errors.New("invalid repertoire id")
+	ErrRepertoireLinkExists   = errors.New("repertoire already linked to event")
+	ErrRepertoireLinkNotFound = errors.New("repertoire is not linked to event")
 )
 
 type membershipReader interface {
@@ -212,6 +216,109 @@ func (s *Service) Cancel(ctx context.Context, tenantID string, eventID string, a
 		EventID:     normalizedEventID,
 		ActorUserID: normalizedActorID,
 	})
+}
+
+func (s *Service) ListRepertoires(ctx context.Context, tenantID string, eventID string, actorUserID string) ([]Repertoire, error) {
+	normalizedTenantID := strings.TrimSpace(tenantID)
+	if normalizedTenantID == "" {
+		return nil, ErrInvalidTenantID
+	}
+
+	normalizedEventID := strings.TrimSpace(eventID)
+	if normalizedEventID == "" {
+		return nil, ErrInvalidEventID
+	}
+
+	normalizedActorID := strings.TrimSpace(actorUserID)
+	if normalizedActorID == "" {
+		return nil, ErrInvalidActorID
+	}
+
+	if _, err := s.repository.GetByIDForMember(ctx, normalizedTenantID, normalizedEventID, normalizedActorID); err != nil {
+		return nil, err
+	}
+
+	return s.repository.ListRepertoires(ctx, normalizedTenantID, normalizedEventID)
+}
+
+func (s *Service) AddRepertoire(ctx context.Context, tenantID string, eventID string, actorUserID string, input LinkRepertoireInput) error {
+	normalizedTenantID := strings.TrimSpace(tenantID)
+	if normalizedTenantID == "" {
+		return ErrInvalidTenantID
+	}
+
+	normalizedEventID := strings.TrimSpace(eventID)
+	if normalizedEventID == "" {
+		return ErrInvalidEventID
+	}
+
+	normalizedActorID := strings.TrimSpace(actorUserID)
+	if normalizedActorID == "" {
+		return ErrInvalidActorID
+	}
+
+	normalizedRepertoireID := strings.TrimSpace(input.RepertoireID)
+	if normalizedRepertoireID == "" {
+		return ErrInvalidRepertoireID
+	}
+
+	existing, err := s.repository.GetByIDForMember(ctx, normalizedTenantID, normalizedEventID, normalizedActorID)
+	if err != nil {
+		return err
+	}
+
+	member, err := s.memberships.GetByChoirAndUser(ctx, normalizedTenantID, existing.ChoirID, normalizedActorID)
+	if err != nil {
+		if errors.Is(err, memberships.ErrMembershipNotFound) {
+			return ErrForbidden
+		}
+		return err
+	}
+	if member.Role != memberships.RoleManager {
+		return ErrForbidden
+	}
+
+	return s.repository.AddRepertoire(ctx, normalizedTenantID, normalizedEventID, normalizedRepertoireID)
+}
+
+func (s *Service) RemoveRepertoire(ctx context.Context, tenantID string, eventID string, actorUserID string, repertoireID string) error {
+	normalizedTenantID := strings.TrimSpace(tenantID)
+	if normalizedTenantID == "" {
+		return ErrInvalidTenantID
+	}
+
+	normalizedEventID := strings.TrimSpace(eventID)
+	if normalizedEventID == "" {
+		return ErrInvalidEventID
+	}
+
+	normalizedActorID := strings.TrimSpace(actorUserID)
+	if normalizedActorID == "" {
+		return ErrInvalidActorID
+	}
+
+	normalizedRepertoireID := strings.TrimSpace(repertoireID)
+	if normalizedRepertoireID == "" {
+		return ErrInvalidRepertoireID
+	}
+
+	existing, err := s.repository.GetByIDForMember(ctx, normalizedTenantID, normalizedEventID, normalizedActorID)
+	if err != nil {
+		return err
+	}
+
+	member, err := s.memberships.GetByChoirAndUser(ctx, normalizedTenantID, existing.ChoirID, normalizedActorID)
+	if err != nil {
+		if errors.Is(err, memberships.ErrMembershipNotFound) {
+			return ErrForbidden
+		}
+		return err
+	}
+	if member.Role != memberships.RoleManager {
+		return ErrForbidden
+	}
+
+	return s.repository.RemoveRepertoire(ctx, normalizedTenantID, normalizedEventID, normalizedRepertoireID)
 }
 
 func normalizeCreateInput(tenantID string, choirID string, actorUserID string, input CreateInput) (string, string, string, string, string, *string, *string, time.Time, error) {

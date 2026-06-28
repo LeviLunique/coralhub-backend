@@ -5,13 +5,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/LeviLunique/coralhub-backend/internal/modules/auth"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
-	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/instruments"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/materials"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/repertoires"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/songs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
-	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformobservability "github.com/LeviLunique/coralhub-backend/internal/platform/observability"
 	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 	"github.com/go-chi/chi/v5"
@@ -21,13 +24,16 @@ import (
 func NewRouter(
 	logger *slog.Logger,
 	handlerTimeout time.Duration,
+	authService *auth.Service,
 	tenantService *tenants.Service,
 	choirService *choirs.Service,
 	userService *moduleusers.Service,
 	membershipService *memberships.Service,
-	voiceKitService *voicekits.Service,
-	fileService *modulefiles.Service,
 	eventService *events.Service,
+	songService *songs.Service,
+	repertoireService *repertoires.Service,
+	instrumentService *instruments.Service,
+	materialService *materials.Service,
 ) http.Handler {
 	router := chi.NewRouter()
 
@@ -53,6 +59,10 @@ func NewRouter(
 			})
 		})
 
+		if authService != nil {
+			auth.RegisterRoutes(r, authService)
+		}
+
 		r.Route("/public", func(public chi.Router) {
 			if tenantService != nil {
 				tenants.RegisterPublicRoutes(public, tenantService)
@@ -66,7 +76,7 @@ func NewRouter(
 			})
 		}
 
-		if tenantService != nil && userService != nil && (choirService != nil || membershipService != nil || voiceKitService != nil || fileService != nil || eventService != nil) {
+		if tenantService != nil && userService != nil && (choirService != nil || membershipService != nil || eventService != nil || songService != nil || repertoireService != nil || instrumentService != nil || materialService != nil) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(RequireActorContext(tenantService, userService))
 
@@ -78,16 +88,24 @@ func NewRouter(
 					memberships.RegisterRoutes(protected, membershipService)
 				}
 
-				if voiceKitService != nil {
-					voicekits.RegisterRoutes(protected, voiceKitService)
-				}
-
-				if fileService != nil {
-					modulefiles.RegisterRoutes(protected, fileService)
-				}
-
 				if eventService != nil {
 					events.RegisterRoutes(protected, eventService)
+				}
+
+				if songService != nil {
+					songs.RegisterRoutes(protected, songService)
+				}
+
+				if repertoireService != nil {
+					repertoires.RegisterRoutes(protected, repertoireService)
+				}
+
+				if instrumentService != nil {
+					instruments.RegisterRoutes(protected, instrumentService)
+				}
+
+				if materialService != nil {
+					materials.RegisterRoutes(protected, materialService)
 				}
 			})
 		}

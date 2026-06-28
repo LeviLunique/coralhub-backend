@@ -48,3 +48,16 @@ type ScheduledReminder struct {
 	ScheduledFor time.Time
 	Status       string
 }
+
+type Repertoire struct {
+	ID          string  `json:"id"`
+	TenantID    string  `json:"tenant_id"`
+	ChoirID     string  `json:"choir_id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	Archived    bool    `json:"archived"`
+}
+
+type LinkRepertoireInput struct {
+	RepertoireID string `json:"repertoire_id"`
+}

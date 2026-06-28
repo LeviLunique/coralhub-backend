@@ -23,9 +23,19 @@ type CreateUserParams struct {
 	FullName string      `json:"full_name"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+type CreateUserRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser, arg.TenantID, arg.Email, arg.FullName)
-	var i User
+	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -51,9 +61,19 @@ type GetUserByEmailParams struct {
 	Email    string      `json:"email"`
 }
 
-func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error) {
+type GetUserByEmailRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, arg.TenantID, arg.Email)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -79,9 +99,19 @@ type GetUserByIDParams struct {
 	ID       pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error) {
+type GetUserByIDRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUserByIDRow, error) {
 	row := q.db.QueryRow(ctx, getUserByID, arg.TenantID, arg.ID)
-	var i User
+	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -94,6 +124,73 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 	return i, err
 }
 
+const listLoginIdentitiesByEmail = `-- name: ListLoginIdentitiesByEmail :many
+SELECT
+  u.id,
+  u.tenant_id,
+  t.slug AS tenant_slug,
+  t.display_name AS tenant_display_name,
+  u.email,
+  u.full_name,
+  u.active,
+  u.password_hash,
+  EXISTS (
+    SELECT 1
+    FROM choir_members AS cm
+    WHERE cm.tenant_id = u.tenant_id
+      AND cm.user_id = u.id
+      AND cm.role = 'manager'
+      AND cm.active = TRUE
+  ) AS manager
+FROM users AS u
+INNER JOIN tenants AS t ON t.id = u.tenant_id
+WHERE lower(u.email) = lower($1)
+  AND u.active = TRUE
+ORDER BY t.slug ASC
+`
+
+type ListLoginIdentitiesByEmailRow struct {
+	ID                pgtype.UUID `json:"id"`
+	TenantID          pgtype.UUID `json:"tenant_id"`
+	TenantSlug        string      `json:"tenant_slug"`
+	TenantDisplayName string      `json:"tenant_display_name"`
+	Email             string      `json:"email"`
+	FullName          string      `json:"full_name"`
+	Active            bool        `json:"active"`
+	PasswordHash      pgtype.Text `json:"password_hash"`
+	Manager           bool        `json:"manager"`
+}
+
+func (q *Queries) ListLoginIdentitiesByEmail(ctx context.Context, lower string) ([]ListLoginIdentitiesByEmailRow, error) {
+	rows, err := q.db.Query(ctx, listLoginIdentitiesByEmail, lower)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLoginIdentitiesByEmailRow
+	for rows.Next() {
+		var i ListLoginIdentitiesByEmailRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TenantSlug,
+			&i.TenantDisplayName,
+			&i.Email,
+			&i.FullName,
+			&i.Active,
+			&i.PasswordHash,
+			&i.Manager,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsersByTenantID = `-- name: ListUsersByTenantID :many
 SELECT id, tenant_id, email, full_name, active, created_at, updated_at
 FROM users
@@ -102,15 +199,25 @@ WHERE tenant_id = $1
 ORDER BY full_name ASC, email ASC
 `
 
-func (q *Queries) ListUsersByTenantID(ctx context.Context, tenantID pgtype.UUID) ([]User, error) {
+type ListUsersByTenantIDRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	FullName  string             `json:"full_name"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListUsersByTenantID(ctx context.Context, tenantID pgtype.UUID) ([]ListUsersByTenantIDRow, error) {
 	rows, err := q.db.Query(ctx, listUsersByTenantID, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	var items []ListUsersByTenantIDRow
 	for rows.Next() {
-		var i User
+		var i ListUsersByTenantIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TenantID,

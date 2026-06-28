@@ -13,16 +13,17 @@ import (
 
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/instruments"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/materials"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
-	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformweb "github.com/LeviLunique/coralhub-backend/internal/platform/web"
 )
 
 func TestNewRouterHealthEndpoints(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -38,7 +39,7 @@ func TestNewRouterHealthEndpoints(t *testing.T) {
 
 func TestNewRouterMetricsEndpoint(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	recorder := httptest.NewRecorder()
@@ -61,7 +62,7 @@ func TestNewRouterTenantBootstrapEndpoint(t *testing.T) {
 			DisplayName: "Coral Jovem Asa Norte",
 		},
 	})
-	router := NewRouter(logger, 30*time.Second, service, nil, nil, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, service, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/tenants/coral-jovem-asa-norte", nil)
 	recorder := httptest.NewRecorder()
@@ -99,7 +100,7 @@ func TestNewRouterChoirCreateEndpointRequiresActorContext(t *testing.T) {
 			Active:   true,
 		},
 	})
-	router := NewRouter(logger, 30*time.Second, tenantService, choirService, userService, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, tenantService, choirService, userService, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs", strings.NewReader(`{"name":"Sopranos"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -126,7 +127,7 @@ func TestNewRouterUserListEndpointRequiresTenantHeader(t *testing.T) {
 	userService := moduleusers.NewService(&userStubRepository{
 		users: []moduleusers.User{{ID: "user-1", Email: "ana@example.com", FullName: "Ana Clara", Active: true}},
 	})
-	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, nil, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, tenantService, nil, userService, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
 	recorder := httptest.NewRecorder()
@@ -160,7 +161,7 @@ func TestNewRouterMembershipListEndpointRequiresActorHeader(t *testing.T) {
 	})
 	userService := moduleusers.NewService(&userStubRepository{})
 	membershipService := memberships.NewService(&membershipStubRepository{})
-	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, membershipService, nil, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, tenantService, nil, userService, membershipService, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/choirs/choir-1/memberships", nil)
 	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
@@ -173,7 +174,7 @@ func TestNewRouterMembershipListEndpointRequiresActorHeader(t *testing.T) {
 	}
 }
 
-func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T) {
+func TestNewRouterMaterialCreateEndpointRequiresManagerActorContext(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tenantService := tenants.NewService(&tenantStubRepository{
 		tenant: tenants.Context{
@@ -194,20 +195,22 @@ func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T
 	membershipService := memberships.NewService(&membershipStubRepository{
 		membership: memberships.Membership{Role: memberships.RoleManager},
 	})
-	voiceKitService := voicekits.NewService(&voiceKitStubRepository{
-		voiceKit: voicekits.VoiceKit{
-			ID:       "kit-1",
-			TenantID: "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
-			ChoirID:  "choir-1",
-			Name:     "Warmups",
-			Active:   true,
+	materialService := materials.NewService(&materialStubRepository{
+		material: materials.Material{
+			ID:           "material-1",
+			TenantID:     "6f3c194e-635c-4df4-aa64-e1f95c8f5542",
+			ChoirID:      "choir-1",
+			SongID:       "song-1",
+			Name:         "Soprano guide",
+			MaterialType: materials.MaterialTypeAudioGuide,
+			TargetType:   materials.TargetTypeVoice,
 		},
 	}, &membershipStubRepository{
 		membership: memberships.Membership{Role: memberships.RoleManager},
 	})
-	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, membershipService, voiceKitService, nil, nil)
+	router := NewRouter(logger, 30*time.Second, nil, tenantService, nil, userService, membershipService, nil, nil, nil, nil, materialService)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/voice-kits", strings.NewReader(`{"name":"Warmups"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/materials", strings.NewReader(`{"song_id":"song-1","name":"Soprano guide","material_type":"audio_guide"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-Slug", "coral-jovem-asa-norte")
 	req.Header.Set("X-User-Email", "ana@example.com")
@@ -216,7 +219,7 @@ func TestNewRouterVoiceKitCreateEndpointRequiresManagerActorContext(t *testing.T
 	router.ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
-		t.Fatalf("voice kit create returned %d, want %d", recorder.Code, http.StatusCreated)
+		t.Fatalf("material create returned %d, want %d", recorder.Code, http.StatusCreated)
 	}
 }
 
@@ -255,7 +258,7 @@ func TestNewRouterEventCreateEndpointRequiresManagerActorContext(t *testing.T) {
 			Active:    true,
 		},
 	}, membershipRepository)
-	router := NewRouter(logger, 30*time.Second, tenantService, nil, userService, nil, nil, nil, eventService)
+	router := NewRouter(logger, 30*time.Second, nil, tenantService, nil, userService, nil, eventService, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/choirs/choir-1/events", strings.NewReader(`{"title":"Main rehearsal","event_type":"rehearsal","start_at":"2026-04-20T19:00:00Z"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -390,38 +393,70 @@ func (s *membershipStubRepository) ListByChoirID(_ context.Context, _, _ string)
 	return s.memberships, nil
 }
 
-type voiceKitStubRepository struct {
-	voiceKit  voicekits.VoiceKit
-	voiceKits []voicekits.VoiceKit
+type materialStubRepository struct {
+	material  materials.Material
+	materials []materials.Material
 	err       error
 }
 
-func (s *voiceKitStubRepository) Create(_ context.Context, _ voicekits.CreateParams) (voicekits.VoiceKit, error) {
+func (s *materialStubRepository) Create(_ context.Context, _ materials.CreateParams) (materials.Material, error) {
 	if s.err != nil {
-		return voicekits.VoiceKit{}, s.err
+		return materials.Material{}, s.err
 	}
 
-	return s.voiceKit, nil
+	return s.material, nil
 }
 
-func (s *voiceKitStubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (voicekits.VoiceKit, error) {
+func (s *materialStubRepository) Update(_ context.Context, _ materials.UpdateParams) (materials.Material, error) {
 	if s.err != nil {
-		return voicekits.VoiceKit{}, s.err
+		return materials.Material{}, s.err
 	}
 
-	return s.voiceKit, nil
+	return s.material, nil
 }
 
-func (s *voiceKitStubRepository) ListByChoirID(_ context.Context, _, _ string) ([]voicekits.VoiceKit, error) {
+func (s *materialStubRepository) GetByIDForMember(_ context.Context, _, _, _ string) (materials.Material, error) {
+	if s.err != nil {
+		return materials.Material{}, s.err
+	}
+
+	return s.material, nil
+}
+
+func (s *materialStubRepository) ListByChoirID(_ context.Context, _, _ string) ([]materials.Material, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 
-	return s.voiceKits, nil
+	return s.materials, nil
 }
 
-func (s *voiceKitStubRepository) Delete(_ context.Context, _, _ string) error {
+func (s *materialStubRepository) ListBySongID(_ context.Context, _, _ string) ([]materials.Material, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.materials, nil
+}
+
+func (s *materialStubRepository) Archive(_ context.Context, _, _ string) error {
 	return s.err
+}
+
+func (s *materialStubRepository) AddInstrument(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *materialStubRepository) RemoveInstrument(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *materialStubRepository) ListInstruments(_ context.Context, _, _ string) ([]instruments.Instrument, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return nil, nil
 }
 
 type eventStubRepository struct {
@@ -474,4 +509,20 @@ func (s *eventStubRepository) Cancel(_ context.Context, params events.CancelPara
 
 	s.canceled = params
 	return nil
+}
+
+func (s *eventStubRepository) AddRepertoire(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *eventStubRepository) RemoveRepertoire(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *eventStubRepository) ListRepertoires(_ context.Context, _, _ string) ([]events.Repertoire, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return nil, nil
 }

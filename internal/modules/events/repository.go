@@ -11,6 +11,9 @@ type Repository interface {
 	GetByIDForMember(ctx context.Context, tenantID string, eventID string, userID string) (Event, error)
 	ListByChoirID(ctx context.Context, tenantID string, choirID string) ([]Event, error)
 	Cancel(ctx context.Context, params CancelParams) error
+	AddRepertoire(ctx context.Context, tenantID string, eventID string, repertoireID string) error
+	RemoveRepertoire(ctx context.Context, tenantID string, eventID string, repertoireID string) error
+	ListRepertoires(ctx context.Context, tenantID string, eventID string) ([]Repertoire, error)
 }
 
 type CreateParams struct {

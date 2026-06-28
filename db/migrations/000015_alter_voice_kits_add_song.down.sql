@@ -1,0 +1,2 @@
+ALTER TABLE voice_kits DROP COLUMN IF EXISTS voice_type;
+ALTER TABLE voice_kits DROP COLUMN IF EXISTS song_id;

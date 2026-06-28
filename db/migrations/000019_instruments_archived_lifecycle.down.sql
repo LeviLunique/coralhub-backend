@@ -1,0 +1,2 @@
+ALTER TABLE instruments ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE instruments DROP COLUMN archived;

@@ -65,18 +65,84 @@ type Event struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type KitFile struct {
+type EventRepertoire struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	EventID      pgtype.UUID        `json:"event_id"`
+	RepertoireID pgtype.UUID        `json:"repertoire_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Instrument struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ChoirID     pgtype.UUID        `json:"choir_id"`
+	Name        string             `json:"name"`
+	Description pgtype.Text        `json:"description"`
+	Icon        pgtype.Text        `json:"icon"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Archived    bool               `json:"archived"`
+}
+
+type Material struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ChoirID      pgtype.UUID        `json:"choir_id"`
+	SongID       pgtype.UUID        `json:"song_id"`
+	Name         string             `json:"name"`
+	MaterialType string             `json:"material_type"`
+	TargetType   string             `json:"target_type"`
+	VoiceType    pgtype.Text        `json:"voice_type"`
+	Archived     bool               `json:"archived"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MaterialFile struct {
 	ID               pgtype.UUID        `json:"id"`
 	TenantID         pgtype.UUID        `json:"tenant_id"`
-	VoiceKitID       pgtype.UUID        `json:"voice_kit_id"`
+	MaterialID       pgtype.UUID        `json:"material_id"`
 	OriginalFilename string             `json:"original_filename"`
 	StoredFilename   string             `json:"stored_filename"`
 	ContentType      string             `json:"content_type"`
 	SizeBytes        int64              `json:"size_bytes"`
 	StorageKey       string             `json:"storage_key"`
-	Active           bool               `json:"active"`
+	Archived         bool               `json:"archived"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MaterialInstrument struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	MaterialID   pgtype.UUID        `json:"material_id"`
+	InstrumentID pgtype.UUID        `json:"instrument_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Repertoire struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ChoirID     pgtype.UUID        `json:"choir_id"`
+	Name        string             `json:"name"`
+	Description pgtype.Text        `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Archived    bool               `json:"archived"`
+}
+
+type RepertoireSong struct {
+	ID             pgtype.UUID        `json:"id"`
+	TenantID       pgtype.UUID        `json:"tenant_id"`
+	RepertoireID   pgtype.UUID        `json:"repertoire_id"`
+	SongID         pgtype.UUID        `json:"song_id"`
+	ExecutionOrder int32              `json:"execution_order"`
+	Notes          pgtype.Text        `json:"notes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type ScheduledNotification struct {
@@ -93,6 +159,21 @@ type ScheduledNotification struct {
 	LastError           pgtype.Text        `json:"last_error"`
 	ProcessingStartedAt pgtype.Timestamptz `json:"processing_started_at"`
 	SentAt              pgtype.Timestamptz `json:"sent_at"`
+}
+
+type Song struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	ChoirID   pgtype.UUID        `json:"choir_id"`
+	Title     string             `json:"title"`
+	Composer  pgtype.Text        `json:"composer"`
+	Arranger  pgtype.Text        `json:"arranger"`
+	SongKey   pgtype.Text        `json:"song_key"`
+	Duration  pgtype.Text        `json:"duration"`
+	Notes     pgtype.Text        `json:"notes"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	Archived  bool               `json:"archived"`
 }
 
 type Tenant struct {
@@ -115,22 +196,21 @@ type TenantConfig struct {
 }
 
 type User struct {
-	ID        pgtype.UUID        `json:"id"`
-	TenantID  pgtype.UUID        `json:"tenant_id"`
-	Email     string             `json:"email"`
-	FullName  string             `json:"full_name"`
-	Active    bool               `json:"active"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	Email        string             `json:"email"`
+	FullName     string             `json:"full_name"`
+	Active       bool               `json:"active"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	PasswordHash pgtype.Text        `json:"password_hash"`
 }
 
-type VoiceKit struct {
-	ID          pgtype.UUID        `json:"id"`
-	TenantID    pgtype.UUID        `json:"tenant_id"`
-	ChoirID     pgtype.UUID        `json:"choir_id"`
-	Name        string             `json:"name"`
-	Description pgtype.Text        `json:"description"`
-	Active      bool               `json:"active"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+type UserInstrument struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	InstrumentID pgtype.UUID        `json:"instrument_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }

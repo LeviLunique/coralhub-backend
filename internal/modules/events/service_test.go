@@ -56,6 +56,21 @@ func (s *stubRepository) Cancel(_ context.Context, params CancelParams) error {
 	return nil
 }
 
+func (s *stubRepository) AddRepertoire(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *stubRepository) RemoveRepertoire(_ context.Context, _, _, _ string) error {
+	return s.err
+}
+
+func (s *stubRepository) ListRepertoires(_ context.Context, _, _ string) ([]Repertoire, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return nil, nil
+}
+
 type stubMembershipReader struct {
 	membership  memberships.Membership
 	memberships []memberships.Membership

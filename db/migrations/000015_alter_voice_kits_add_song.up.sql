@@ -1,0 +1,2 @@
+ALTER TABLE voice_kits ADD COLUMN song_id UUID REFERENCES songs (id) ON DELETE CASCADE;
+ALTER TABLE voice_kits ADD COLUMN voice_type TEXT;

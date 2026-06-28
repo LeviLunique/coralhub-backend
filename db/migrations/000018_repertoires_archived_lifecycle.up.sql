@@ -1,0 +1,3 @@
+ALTER TABLE repertoires ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE repertoires DROP COLUMN status;
+ALTER TABLE repertoires DROP COLUMN active;

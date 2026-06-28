@@ -9,14 +9,16 @@ import (
 	"syscall"
 	"time"
 
-	s3storage "github.com/LeviLunique/coralhub-backend/internal/integrations/storage/s3"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/auth"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/choirs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/events"
-	modulefiles "github.com/LeviLunique/coralhub-backend/internal/modules/files"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/instruments"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/materials"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/memberships"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/repertoires"
+	"github.com/LeviLunique/coralhub-backend/internal/modules/songs"
 	"github.com/LeviLunique/coralhub-backend/internal/modules/tenants"
 	moduleusers "github.com/LeviLunique/coralhub-backend/internal/modules/users"
-	"github.com/LeviLunique/coralhub-backend/internal/modules/voicekits"
 	platformconfig "github.com/LeviLunique/coralhub-backend/internal/platform/config"
 	platformhttp "github.com/LeviLunique/coralhub-backend/internal/platform/http"
 	platformlog "github.com/LeviLunique/coralhub-backend/internal/platform/log"
@@ -46,6 +48,8 @@ func main() {
 	defer pool.Close()
 
 	queries := sqlc.New(pool)
+	authRepository := postgres.NewAuthRepository(queries)
+	authService := auth.NewService(authRepository)
 	tenantRepository := postgres.NewTenantRepository(queries)
 	tenantService := tenants.NewService(tenantRepository)
 	choirRepository := postgres.NewChoirRepository(pool, queries)
@@ -54,21 +58,20 @@ func main() {
 	userService := moduleusers.NewService(userRepository)
 	membershipRepository := postgres.NewMembershipRepository(pool, queries)
 	membershipService := memberships.NewService(membershipRepository)
-	voiceKitRepository := postgres.NewVoiceKitRepository(queries)
-	voiceKitService := voicekits.NewService(voiceKitRepository, membershipRepository)
-	fileRepository := postgres.NewFileRepository(queries)
-	storageClient, err := s3storage.New(cfg.Storage)
-	if err != nil {
-		logger.Error("failed to initialize storage client", "error", err)
-		os.Exit(1)
-	}
-	fileService := modulefiles.NewService(fileRepository, storageClient, voiceKitRepository, membershipRepository, cfg.AppEnv)
 	eventRepository := postgres.NewEventRepository(pool, queries)
 	eventService := events.NewService(eventRepository, membershipRepository)
+	songRepository := postgres.NewSongRepository(queries)
+	songService := songs.NewService(songRepository, membershipRepository)
+	repertoireRepository := postgres.NewRepertoireRepository(queries)
+	repertoireService := repertoires.NewService(repertoireRepository, membershipRepository)
+	instrumentRepository := postgres.NewInstrumentRepository(queries)
+	instrumentService := instruments.NewService(instrumentRepository, membershipRepository)
+	materialRepository := postgres.NewMaterialRepository(queries)
+	materialService := materials.NewService(materialRepository, membershipRepository)
 
 	server := &stdhttp.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           platformhttp.NewRouter(logger, cfg.HTTP.HandlerTimeout, tenantService, choirService, userService, membershipService, voiceKitService, fileService, eventService),
+		Handler:           platformhttp.NewRouter(logger, cfg.HTTP.HandlerTimeout, authService, tenantService, choirService, userService, membershipService, eventService, songService, repertoireService, instrumentService, materialService),
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
